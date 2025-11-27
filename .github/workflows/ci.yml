@@ -1,0 +1,36 @@
+name: Backend CI
+
+on:
+  push:
+    branches: [ dev ]
+    paths:
+      - 'backend/**'
+  pull_request:
+    branches: [ dev ]
+    paths:
+      - 'backend/**'
+
+jobs:
+  lint-and-install:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        cd backend
+        pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Check code formatting with black
+      run: |
+        cd backend
+        black --check app tests
