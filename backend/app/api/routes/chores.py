@@ -1,0 +1,81 @@
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from ...schemas.schema import ChoreCreate, TicketUpdate
+from ...models.model import Chore, Ticket
+from ...core.generate_monthly_tickets import generate_monthly_tickets
+from ..dependencies import get_current_user
+from ...db.database import get_db
+
+
+router = APIRouter(prefix="/chores", tags=["Chores"])
+
+
+@router.post("/add")
+def add_chore(
+    chore: ChoreCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    if not current_user.house_id:
+        raise HTTPException(status_code=400, detail="You must belong to a house first.")
+
+    new_chore = Chore(
+        name=chore.name,
+        description=chore.description,
+        difficulty_level=chore.difficulty_level,
+        chore_frequency=chore.chore_frequency,
+        house_id=current_user.house_id,
+    )
+    db.add(new_chore)
+    db.commit()
+    db.refresh(new_chore)
+    return {"status": "chore added", "chore_id": new_chore.id}
+
+
+@router.post("/generate-monthly-batch")
+def generate_tickets(
+    month: int,
+    year: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """
+    Triggers the batch ticket generation logic.
+    In production, this is usually called by a cron job (system timer), not a user button.
+    """
+    result = generate_monthly_tickets(db, current_user.house_id, year, month)
+    return result
+
+
+@router.patch("/ticket/{ticket_id}")
+def update_ticket_status(
+    ticket_id: int, update: TicketUpdate, db: Session = Depends(get_db)
+):
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket not found")
+
+    ticket.status = update.status
+    if update.status == "Completed":
+        from datetime import datetime
+
+        ticket.completed_at = datetime.now()
+
+    db.commit()
+    return {"status": "updated", "new_state": ticket.status}
+
+
+@router.get("/my-tickets")
+def get_my_tickets(
+    db: Session = Depends(get_db), current_user=Depends(get_current_user)
+):
+    tickets = (
+        db.query(Ticket)
+        .filter(
+            Ticket.assigned_user_id == current_user.id,
+            Ticket.status != "Completed",
+        )
+        .all()
+    )
+    return tickets

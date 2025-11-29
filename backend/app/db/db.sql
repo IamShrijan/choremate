@@ -8,6 +8,7 @@ TABLE HOUSES (
         -- kitchen_count INT NOT NULL DEFAULT 1,   -- New Column: Number of kitchens
         -- has_living_room BOOLEAN NOT NULL DEFAULT TRUE, -- New Column: True/False for living room
         -- has_patio BOOLEAN NOT NULL DEFAULT FALSE      -- New Column: True/False for patio
+    invite_code VARCHAR(10),
 );
 
 TABLE USERS (

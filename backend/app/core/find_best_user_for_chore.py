@@ -1,5 +1,7 @@
 from sqlalchemy import func
 
+from ..models.model import User, Ticket
+
 
 def find_best_user_for_chore(db_session, house_id, chore, due_date):
     """

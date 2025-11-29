@@ -1,8 +1,10 @@
 from datetime import datetime, timedelta
 
+from ..models.model import Chore, Ticket
+from .find_best_user_for_chore import find_best_user_for_chore
+
 
 def generate_monthly_tickets(db, house_id: int, year: int, month: int):
-    # Get all chores for the house
     chores = db.query(Chore).filter(Chore.house_id == house_id).all()
 
     start_date = datetime(year, month, 1)
