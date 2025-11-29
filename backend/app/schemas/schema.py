@@ -1,19 +1,18 @@
 from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any
 from datetime import datetime
 
 
-# --- User Schemas ---
+# --- User Schemas (placeholders, adjust as needed) ---
 class UserCreate(BaseModel):
-    name: String
-    email: String
-    password: String
-    phone: Optional[str] = None
+    name: str
+    email: str
+    password: str
 
 
 class UserLogin(BaseModel):
-    email: String
-    password: String
+    email: str
+    password: str
 
 
 # --- House Schemas ---
