@@ -10,9 +10,8 @@ export default function CreateHousehold({ onComplete = () => { }, onBack = () =>
     const [householdName, setHouseholdName] = useState("");
     const [roommates, setRoommates] = useState([]);
     const [newRoommate, setNewRoommate] = useState("");
-    const [apartmentType, setApartmentType] = useState("");
-    const [bedrooms, setBedrooms] = useState("");
-    const [bathrooms, setBathrooms] = useState("");
+    const [bedrooms, setBedrooms] = useState(2);
+    const [bathrooms, setBathrooms] = useState(1.5);
     const [hasLivingSpace, setHasLivingSpace] = useState(false);
     const [hasPatio, setHasPatio] = useState(false);
     const [otherDetails, setOtherDetails] = useState("");
@@ -41,7 +40,6 @@ export default function CreateHousehold({ onComplete = () => { }, onBack = () =>
         onComplete({
             householdName,
             roommates,
-            apartmentType,
             bedrooms,
             bathrooms,
             hasLivingSpace,
@@ -239,7 +237,7 @@ export default function CreateHousehold({ onComplete = () => { }, onBack = () =>
                                     </p>
                                 </div>
 
-                                <div>
+                                {/* <div>
                                     <Label>Apartment Type</Label>
                                     <div style={{
                                         display: "grid",
@@ -263,7 +261,7 @@ export default function CreateHousehold({ onComplete = () => { }, onBack = () =>
                                             </SelectButton>
                                         ))}
                                     </div>
-                                </div>
+                                </div> */}
 
                                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
                                     <div>
@@ -360,10 +358,9 @@ export default function CreateHousehold({ onComplete = () => { }, onBack = () =>
                                     onClick={handleContinueToSurvey}
                                     style={{
                                         width: "100%",
-                                        opacity: !apartmentType ? 0.5 : 1,
-                                        cursor: !apartmentType ? "not-allowed" : "pointer"
+                                        opacity: 1,
+                                        cursor: "pointer"
                                     }}
-                                    disabled={!apartmentType}
                                 >
                                     <Sparkles style={{ width: "16px", height: "16px", marginRight: "8px" }} />
                                     Continue to Survey
