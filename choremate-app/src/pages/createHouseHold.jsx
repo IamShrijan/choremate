@@ -12,6 +12,8 @@ export default function CreateHousehold({ onComplete = () => { }, onBack = () =>
     const [newRoommate, setNewRoommate] = useState("");
     const [bedrooms, setBedrooms] = useState(2);
     const [bathrooms, setBathrooms] = useState(1.5);
+    const [kitchen, setKitchen] = useState(1);
+    const [livingRoom, setLivingRoom] = useState(1);
     const [hasLivingSpace, setHasLivingSpace] = useState(false);
     const [hasPatio, setHasPatio] = useState(false);
     const [otherDetails, setOtherDetails] = useState("");
@@ -288,19 +290,35 @@ export default function CreateHousehold({ onComplete = () => { }, onBack = () =>
                                         />
                                     </div>
                                 </div>
+                                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                                    <div>
+                                        <Label htmlFor="kitchen">Kitchen</Label>
+                                        <Input
+                                            id="kitchen"
+                                            type="number"
+                                            value={kitchen}
+                                            onChange={(e) => setKitchen(e.target.value)}
+                                            placeholder="1"
+                                            min="0"
+                                        />
+                                    </div>
+                                    <div>
+                                        <Label htmlFor="livingRoom">Living Room</Label>
+                                        <Input
+                                            id="livingRoom"
+                                            type="number"
+                                            step="1"
+                                            value={livingRoom}
+                                            onChange={(e) => setLivingRoom(e.target.value)}
+                                            placeholder="1"
+                                            min="0"
+                                        />
+                                    </div>
+                                </div>
 
                                 <div>
                                     <Label>Additional Areas</Label>
                                     <div style={{ display: "flex", gap: "16px", marginTop: "8px" }}>
-                                        <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
-                                            <input
-                                                type="checkbox"
-                                                checked={hasLivingSpace}
-                                                onChange={(e) => setHasLivingSpace(e.target.checked)}
-                                                style={{ width: "16px", height: "16px", accentColor: "#7c3aed" }}
-                                            />
-                                            <span style={{ fontSize: "14px", color: "#374151" }}>Living Space</span>
-                                        </label>
                                         <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
                                             <input
                                                 type="checkbox"
