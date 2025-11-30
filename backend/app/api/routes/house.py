@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from ...schemas.schema import HouseCreate, HouseJoin
+from ...schemas.house import HouseCreate, HouseJoin
 from ...models.model import House
 from ..dependencies import get_current_user
 from ...db.database import get_db
@@ -48,10 +48,13 @@ def join_house(
 ):
     # If user is already in a house, don't let them join another
     if current_user.house_id:
-        raise HTTPException(
-            status_code=400,
-            detail="User is already part of a household.",
-        )
+        house = db.query(House).filter(House.id == current_user.house_id).first()
+        return {
+            "status": "already_member",
+            "error": "User is already part of a household.",
+            "house_name": house.name,
+            "house_id": house.id,
+        }
 
     house = db.query(House).filter(House.invite_code == join_data.invite_code).first()
     if not house:

@@ -42,8 +42,10 @@ class UserPreference(Base):
         UUIDStr, primary_key=True, index=True, default=lambda: str(uuid.uuid4())
     )
     cleanliness_level = Column(Integer)
-    time_availability = Column(String)
-    day_availability = Column(String)
+    time_availability = Column(
+        JSON
+    )  # e.g. ["morning", "afternoon", "evening", "night"]
+    day_availability = Column(JSON)  # e.g. ["weekday", "weekend"]
     special_requirements = Column(String)
     chore_preferences = Column(JSON)  # e.g. ["Cleaning", "Repair"]
     user_id = Column(UUIDStr, ForeignKey("users.id"))
@@ -57,11 +59,10 @@ class Chore(Base):
     )
     name = Column(String)
     description = Column(String)
-    difficulty_level = Column(Integer)
-    duration = Column(Integer)
-    chore_duration = Column(Integer)
-    chore_frequency = Column(String)
-    chore_priority = Column(Integer)
+    difficulty_level = Column(Integer)  # 1-5
+    duration = Column(Integer)  # in minutes
+    chore_frequency = Column(String)  # "Daily", "Weekly", "Monthly", "One-time"
+    chore_priority = Column(Integer)  # 1-3 low medium high
     notes = Column(String)
     house_id = Column(UUIDStr, ForeignKey("houses.id"))
 
@@ -74,7 +75,7 @@ class Ticket(Base):
     )
     chore_id = Column(UUIDStr, ForeignKey("chores.id"))
     assigned_user_id = Column(UUIDStr, ForeignKey("users.id"))
-    created_user_id = Column(UUIDStr, ForeignKey("users.id"))
+    created_user_id = Column(UUIDStr, ForeignKey("users.id"), nullable=True)
     status = Column(String, default="Pending")
     due_date = Column(DateTime)
     created_at = Column(DateTime, server_default=func.now())
