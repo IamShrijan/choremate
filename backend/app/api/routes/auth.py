@@ -1,11 +1,15 @@
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
+
+from ...api.dependencies import get_current_user
+from ...core.security import blacklist_token
 
 from ...db.database import get_db
 from ...models.model import User
-from ...schemas.schema import UserCreate, UserLogin
+from ...schemas.user import UserCreate, UserLogin
 from ...core.security import (
     hash_password,
     verify_password,
@@ -14,6 +18,7 @@ from ...core.security import (
 )
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
+bearer_scheme = HTTPBearer()
 
 
 @router.post("/signup", status_code=201)
@@ -55,4 +60,22 @@ def login(credentials: UserLogin, db: Session = Depends(get_db)):
     return {
         "access_token": access_token,
         "token_type": "bearer",
+    }
+
+
+@router.post("/logout")
+def logout(
+    current_user: User = Depends(get_current_user),
+    creds: HTTPAuthorizationCredentials = Depends(bearer_scheme),
+):
+    """
+    Log out the current user by blacklisting their token.
+    The token will be immediately invalidated.
+    """
+    token = creds.credentials
+    blacklist_token(token)
+
+    return {
+        "status": "success",
+        "message": "Logged out successfully. Token has been invalidated.",
     }

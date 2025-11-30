@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from ...schemas.schema import ChoreCreate, TicketUpdate
+from ...schemas.chore_and_ticket import ChoreCreate, TicketUpdate
 from ...models.model import Chore, Ticket
 from ...core.generate_monthly_tickets import generate_monthly_tickets
+from ...core.generate_house_chores import generate_house_chores
 from ..dependencies import get_current_user
 from ...db.database import get_db
 
@@ -31,6 +32,40 @@ def add_chore(
     db.commit()
     db.refresh(new_chore)
     return {"status": "chore added", "chore_id": new_chore.id}
+
+
+@router.post("/generate-house-chores")
+def generate_house_chores_for_users(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """
+    Generate chores for the current user's house using Gemini AI.
+    Chores are assigned to users and returned grouped by user_id.
+
+    Response format:
+    {
+        "chores_by_user": {
+            "user_id_1": {
+                "user_name": "...",
+                "chores": [...],
+                "weekly_score": ...,
+                "chore_count": ...
+            },
+            "user_id_2": { ... }
+        },
+        "fairness_summary": { ... }
+    }
+    """
+    if not current_user.house_id:
+        raise HTTPException(status_code=400, detail="You must belong to a house first.")
+
+    result = generate_house_chores(db, current_user.house_id)
+
+    if result["status"] == "error":
+        raise HTTPException(status_code=400, detail=result["message"])
+
+    return result
 
 
 @router.post("/generate-monthly-batch")

@@ -8,6 +8,7 @@ from passlib.context import CryptContext
 SECRET_KEY = "super-secret-key-change-me"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60
+TOKEN_BLACKLIST = set()
 
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
@@ -30,8 +31,22 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return encoded_jwt
 
 
+def blacklist_token(token: str):
+    """Add token to blacklist"""
+    TOKEN_BLACKLIST.add(token)
+
+
+def is_token_blacklisted(token: str) -> bool:
+    """Check if token is blacklisted"""
+    return token in TOKEN_BLACKLIST
+
+
 def decode_access_token(token: str) -> Optional[dict]:
     try:
+        # Check if token is blacklisted first
+        if is_token_blacklisted(token):
+            return None
+
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         return payload
     except JWTError:
