@@ -65,6 +65,8 @@ export default function SurveyFlow({ onComplete = () => { }, onBack = () => { } 
             if (current === "neutral") {
                 next = "dont-mind";
             } else if (current === "dont-mind") {
+                next = "prefer-to-avoid";
+            } else if (current === "prefer-to-avoid") {
                 next = "neutral";
             } else {
                 next = "neutral";
@@ -99,6 +101,14 @@ export default function SurveyFlow({ onComplete = () => { }, onBack = () => { } 
                 borderColor: "#22c55e",
                 backgroundColor: "#f0fdf4",
                 color: "#15803d",
+            };
+        }
+        if (preference === "prefer-to-avoid") {
+            return {
+                ...baseStyle,
+                borderColor: "#ef4444",
+                backgroundColor: "#fee2e2",
+                color: "#dc2626",
             };
         }
         return {
@@ -397,7 +407,7 @@ export default function SurveyFlow({ onComplete = () => { }, onBack = () => { } 
                                         Chore Preferences
                                     </h2>
                                     <p style={{ color: "#6b7280", marginBottom: "16px" }}>
-                                        Tap chores you don't mind (green), tap again to unselect
+                                        Tap chores to toggle your preference.
                                     </p>
                                 </div>
 
@@ -444,6 +454,15 @@ export default function SurveyFlow({ onComplete = () => { }, onBack = () => { } 
                                             backgroundColor: "#d1d5db",
                                         }} />
                                         <span>Neutral</span>
+                                    </div>
+                                    <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                                        <div style={{
+                                            width: "12px",
+                                            height: "12px",
+                                            borderRadius: "2px",
+                                            backgroundColor: "#ef4444",
+                                        }} />
+                                        <span>Prefer to Avoid</span>
                                     </div>
                                 </div>
 
