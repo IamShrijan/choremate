@@ -4,6 +4,7 @@ import Button from "../components/button";
 import { Slider } from "../components/slider";
 import { Textarea } from "../components/textarea";
 import { Card, CardContent } from "../components/card";
+import { preferencesAPI } from "../utils/api";
 
 const chores = [
     { id: "kitchen-counters", name: "Kitchen Counters", emoji: "🧽" },
@@ -15,10 +16,9 @@ const chores = [
     { id: "bathroom-sink", name: "Bathroom Sink", emoji: "🪥" },
     { id: "bathroom-floors", name: "Bathroom Floors", emoji: "🧽" },
     { id: "living-room", name: "Living Room Tidying", emoji: "🛋️" },
-    { id: "vacuuming", name: "Vacuuming", emoji: "🧹" },
-    { id: "dusting", name: "Dusting", emoji: "✨" },
-    { id: "grocery", name: "Grocery Shopping", emoji: "🛒" },
-    { id: "recycling", name: "Recycling", emoji: "♻️" },
+    { id: "vacuuming", name: "Vacuuming", emoji: "🪠" },
+    { id: "dusting", name: "Dusting", emoji: "🧹" },
+    { id: "grocery", name: "Grocery Shopping", emoji: "🛒" }
 ];
 
 export default function SurveyFlow({ onComplete = () => { }, onBack = () => { } }) {
@@ -30,6 +30,8 @@ export default function SurveyFlow({ onComplete = () => { }, onBack = () => { } 
     });
     const [chorePreferences, setChorePreferences] = useState({});
     const [considerations, setConsiderations] = useState("");
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState("");
 
     const cleanlinessLevels = [
         "Presentable",
@@ -63,10 +65,10 @@ export default function SurveyFlow({ onComplete = () => { }, onBack = () => { } 
             let next;
 
             if (current === "neutral") {
-                next = "dont-mind";
-            } else if (current === "dont-mind") {
-                next = "prefer-to-avoid";
-            } else if (current === "prefer-to-avoid") {
+                next = "dont mind";
+            } else if (current === "dont mind") {
+                next = "prefer to avoid";
+            } else if (current === "prefer to avoid") {
                 next = "neutral";
             } else {
                 next = "neutral";
@@ -95,7 +97,7 @@ export default function SurveyFlow({ onComplete = () => { }, onBack = () => { } 
             backgroundColor: "white",
         };
 
-        if (preference === "dont-mind") {
+        if (preference === "dont mind") {
             return {
                 ...baseStyle,
                 borderColor: "#22c55e",
@@ -103,7 +105,7 @@ export default function SurveyFlow({ onComplete = () => { }, onBack = () => { } 
                 color: "#15803d",
             };
         }
-        if (preference === "prefer-to-avoid") {
+        if (preference === "prefer to avoid") {
             return {
                 ...baseStyle,
                 borderColor: "#ef4444",
@@ -130,13 +132,62 @@ export default function SurveyFlow({ onComplete = () => { }, onBack = () => { } 
         }
     };
 
-    const handleGenerateSchedule = () => {
-        onComplete({
-            cleanliness: cleanlinessLevels[cleanliness],
-            availability,
-            chorePreferences,
-            considerations,
-        });
+    const handleGenerateSchedule = async () => {
+        setLoading(true);
+        setError("");
+        
+        try {
+            // Map chore IDs to actual chore names from backend
+            const choreNameMapping = {
+                "kitchen-counters": "Kitchen Counters",
+                "dishes": "Dishes",
+                "kitchen-floors": "Kitchen Floors",
+                "trash": "Taking Out Trash",
+                "toilet": "Cleaning Toilet",
+                "shower": "Cleaning Shower",
+                "bathroom-sink": "Bathroom Sink",
+                "bathroom-floors": "Bathroom Floors",
+                "living-room": "Living Room Tidying",
+                "vacuuming": "Vacuuming",
+                "dusting": "Dusting",
+                "grocery": "Grocery Shopping"
+            };
+
+            // Convert chore preferences from frontend IDs to backend names
+            const backendChorePreferences = {};
+            Object.entries(chorePreferences).forEach(([choreId, preference]) => {
+                const choreName = choreNameMapping[choreId];
+                if (choreName) {
+                    backendChorePreferences[choreName] = preference;
+                }
+            });
+
+            // Prepare data for backend
+            const preferencesData = {
+                cleanliness_level: cleanliness + 1, // Convert 0-4 index to 1-5 scale
+                // Convert to lowercase
+                time_availability: availability.times.map(t => t.toLowerCase()),
+                // Convert "Weekdays" -> "weekday", "Weekends" -> "weekend" (singular, lowercase)
+                day_availability: availability.days.map(d => d.toLowerCase().replace(/s$/, '')),
+                chore_preferences: backendChorePreferences,
+                special_requirements: considerations || "",
+            };
+
+            // Save to backend
+            await preferencesAPI.updatePreferences(preferencesData);
+            
+            // Then navigate to next page
+            onComplete({
+                cleanliness: cleanlinessLevels[cleanliness],
+                availability,
+                chorePreferences,
+                considerations,
+            });
+        } catch (err) {
+            console.error("Failed to save preferences:", err);
+            setError(err.message || "Failed to save preferences. Please try again.");
+            setLoading(false);
+        }
     };
 
     const progressDots = [1, 2, 3, 4].map((dot) => {
@@ -311,10 +362,10 @@ export default function SurveyFlow({ onComplete = () => { }, onBack = () => { } 
                                     </p>
                                     <div style={{
                                         display: "grid",
-                                        gridTemplateColumns: "repeat(3, 1fr)",
+                                        gridTemplateColumns: "repeat(4, 1fr)",
                                         gap: "12px",
                                     }}>
-                                        {["Morning", "Afternoon", "Evening"].map((time) => (
+                                        {["Morning", "Afternoon", "Evening", "Night"].map((time) => (
                                             <Button
                                                 key={time}
                                                 variant="outline"
@@ -340,7 +391,7 @@ export default function SurveyFlow({ onComplete = () => { }, onBack = () => { } 
                                         gridTemplateColumns: "repeat(2, 1fr)",
                                         gap: "12px",
                                     }}>
-                                        {["Weekdays", "Weekends"].map((day) => (
+                                        {["Weekday", "Weekend"].map((day) => (
                                             <Button
                                                 key={day}
                                                 variant="outline"

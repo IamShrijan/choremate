@@ -4,6 +4,7 @@ import Button from "../components/button";
 import Input from "../components/input";
 import Label from "../components/label";
 import { Card, CardContent } from "../components/card";
+import { houseAPI } from "../utils/api";
 
 export default function CreateHousehold({ onComplete = () => { }, onBack = () => { } }) {
     const [step, setStep] = useState(1);
@@ -17,15 +18,34 @@ export default function CreateHousehold({ onComplete = () => { }, onBack = () =>
     const [hasLivingSpace, setHasLivingSpace] = useState(false);
     const [hasPatio, setHasPatio] = useState(false);
     const [otherDetails, setOtherDetails] = useState("");
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState("");
+
+    // Email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{3,}$/;
 
     const handleAddRoommate = () => {
-        if (newRoommate.trim()) {
-            setRoommates([
-                ...roommates,
-                { id: Date.now().toString(), emailOrPhone: newRoommate },
-            ]);
-            setNewRoommate("");
+        const email = newRoommate.trim().toLowerCase();
+        if (!email) return;
+        
+        // Validate email
+        if (!emailRegex.test(email)) {
+            setError("Please enter a valid email address");
+            return;
         }
+        
+        // Check for duplicates
+        if (roommates.some(r => r.emailOrPhone.toLowerCase() === email)) {
+            setError("This email is already added");
+            return;
+        }
+        
+        setRoommates([
+            ...roommates,
+            { id: Date.now().toString(), emailOrPhone: email },
+        ]);
+        setNewRoommate("");
+        setError("");
     };
 
     const handleRemoveRoommate = (id) => {
@@ -38,16 +58,54 @@ export default function CreateHousehold({ onComplete = () => { }, onBack = () =>
         }
     };
 
-    const handleContinueToSurvey = () => {
-        onComplete({
-            householdName,
-            roommates,
-            bedrooms,
-            bathrooms,
-            hasLivingSpace,
-            hasPatio,
-            otherDetails,
-        });
+    const handleContinueToSurvey = async () => {
+        setLoading(true);
+        setError("");
+    
+        try {
+            // Create household with invited emails
+            const houseLayout = {
+                bedrooms: parseInt(bedrooms) || 0,
+                bathrooms: parseFloat(bathrooms) || 0,
+                kitchen: parseInt(kitchen) || 0,
+                living_room: parseInt(livingRoom) || 0,
+                has_living_space: hasLivingSpace,
+                has_patio: hasPatio,
+                other_details: otherDetails,
+            };
+    
+            // Extract emails from roommates list
+            const invitedEmails = roommates.length > 0 
+                ? roommates.map(r => r.emailOrPhone)
+                : [];
+    
+            const createResponse = await houseAPI.createHouse({
+                name: householdName || "My Household",
+                address: "",
+                house_layout: houseLayout,
+                invited_emails: invitedEmails,  // Send emails in create call
+            });
+    
+            // Pass data to parent - navigate to survey flow
+            onComplete({
+                householdName: createResponse.house_name || householdName,
+                roommates,
+                bedrooms,
+                bathrooms,
+                kitchen,
+                livingRoom,
+                hasLivingSpace,
+                hasPatio,
+                otherDetails,
+                inviteCode: createResponse.invite_code,
+                houseId: createResponse.house_id,
+            });
+            
+            // Note: Don't set loading to false here since we're navigating away
+        } catch (err) {
+            setError(err.message || "Failed to create household. Please try again.");
+            setLoading(false);
+        }
     };
 
     const progressDots = [1, 2].map((dot) => (
@@ -116,6 +174,20 @@ export default function CreateHousehold({ onComplete = () => { }, onBack = () =>
 
                 <Card style={{ boxShadow: "0 10px 25px rgba(0, 0, 0, 0.1)" }}>
                     <CardContent style={{ padding: "32px" }}>
+                        {/* Error message */}
+                        {error && (
+                            <div style={{
+                                padding: "12px",
+                                backgroundColor: "#fee2e2",
+                                color: "#dc2626",
+                                borderRadius: "6px",
+                                marginBottom: "20px",
+                                fontSize: "14px"
+                            }}>
+                                {error}
+                            </div>
+                        )}
+
                         {/* Step 1: Household Name & Roommates */}
                         {step === 1 && (
                             <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
@@ -139,6 +211,7 @@ export default function CreateHousehold({ onComplete = () => { }, onBack = () =>
                                         value={householdName}
                                         onChange={(e) => setHouseholdName(e.target.value)}
                                         placeholder="e.g., The Beach House, Maple Ave Crew"
+                                        disabled={loading}
                                     />
                                 </div>
 
@@ -147,10 +220,14 @@ export default function CreateHousehold({ onComplete = () => { }, onBack = () =>
                                     <div style={{ display: "flex", gap: "8px", marginTop: "4px" }}>
                                         <Input
                                             id="roommate"
-                                            type="text"
+                                            type="email"
                                             value={newRoommate}
-                                            onChange={(e) => setNewRoommate(e.target.value)}
-                                            placeholder="Email or phone number"
+                                            onChange={(e) => {
+                                                setNewRoommate(e.target.value);
+                                                setError(""); // Clear error when typing
+                                            }}
+                                            placeholder="Email address"
+                                            disabled={loading}
                                             onKeyPress={(e) => {
                                                 if (e.key === "Enter") {
                                                     e.preventDefault();
@@ -161,6 +238,7 @@ export default function CreateHousehold({ onComplete = () => { }, onBack = () =>
                                         <Button
                                             onClick={handleAddRoommate}
                                             style={{ padding: "12px 16px" }}
+                                            disabled={loading}
                                         >
                                             <Plus style={{ width: "16px", height: "16px" }} />
                                         </Button>
@@ -195,7 +273,10 @@ export default function CreateHousehold({ onComplete = () => { }, onBack = () =>
                                                         {roommate.emailOrPhone}
                                                     </span>
                                                 </div>
-                                                <RemoveButton onClick={() => handleRemoveRoommate(roommate.id)}>
+                                                <RemoveButton 
+                                                    onClick={() => handleRemoveRoommate(roommate.id)}
+                                                    disabled={loading}
+                                                >
                                                     <X style={{ width: "16px", height: "16px" }} />
                                                 </RemoveButton>
                                             </div>
@@ -207,10 +288,10 @@ export default function CreateHousehold({ onComplete = () => { }, onBack = () =>
                                     onClick={handleNext}
                                     style={{
                                         width: "100%",
-                                        opacity: roommates.length === 0 ? 0.5 : 1,
-                                        cursor: roommates.length === 0 ? "not-allowed" : "pointer"
+                                        opacity: (roommates.length === 0 || loading) ? 0.5 : 1,
+                                        cursor: (roommates.length === 0 || loading) ? "not-allowed" : "pointer"
                                     }}
-                                    disabled={roommates.length === 0}
+                                    disabled={roommates.length === 0 || loading}
                                 >
                                     Continue
                                     <ChevronRight style={{ width: "16px", height: "16px", marginLeft: "8px" }} />
@@ -224,7 +305,7 @@ export default function CreateHousehold({ onComplete = () => { }, onBack = () =>
                             </div>
                         )}
 
-                        {/* Step 2: Apartment Type */}
+                        {/* Step 2: Apartment Details */}
                         {step === 2 && (
                             <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
                                 <div style={{ textAlign: "center" }}>
@@ -239,32 +320,6 @@ export default function CreateHousehold({ onComplete = () => { }, onBack = () =>
                                     </p>
                                 </div>
 
-                                {/* <div>
-                                    <Label>Apartment Type</Label>
-                                    <div style={{
-                                        display: "grid",
-                                        gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
-                                        gap: "12px",
-                                        marginTop: "8px"
-                                    }}>
-                                        {[
-                                            { value: "apartment", label: "Apartment" },
-                                            { value: "house", label: "House" },
-                                            { value: "condo", label: "Condo" },
-                                            { value: "townhouse", label: "Townhouse" },
-                                            { value: "other", label: "Other" }
-                                        ].map((option) => (
-                                            <SelectButton
-                                                key={option.value}
-                                                selected={apartmentType === option.value}
-                                                onClick={() => setApartmentType(option.value)}
-                                            >
-                                                {option.label}
-                                            </SelectButton>
-                                        ))}
-                                    </div>
-                                </div> */}
-
                                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
                                     <div>
                                         <Label htmlFor="bedrooms">Bedrooms</Label>
@@ -275,6 +330,7 @@ export default function CreateHousehold({ onComplete = () => { }, onBack = () =>
                                             onChange={(e) => setBedrooms(e.target.value)}
                                             placeholder="2"
                                             min="0"
+                                            disabled={loading}
                                         />
                                     </div>
                                     <div>
@@ -287,9 +343,11 @@ export default function CreateHousehold({ onComplete = () => { }, onBack = () =>
                                             onChange={(e) => setBathrooms(e.target.value)}
                                             placeholder="1.5"
                                             min="0"
+                                            disabled={loading}
                                         />
                                     </div>
                                 </div>
+                                
                                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
                                     <div>
                                         <Label htmlFor="kitchen">Kitchen</Label>
@@ -300,6 +358,7 @@ export default function CreateHousehold({ onComplete = () => { }, onBack = () =>
                                             onChange={(e) => setKitchen(e.target.value)}
                                             placeholder="1"
                                             min="0"
+                                            disabled={loading}
                                         />
                                     </div>
                                     <div>
@@ -312,6 +371,7 @@ export default function CreateHousehold({ onComplete = () => { }, onBack = () =>
                                             onChange={(e) => setLivingRoom(e.target.value)}
                                             placeholder="1"
                                             min="0"
+                                            disabled={loading}
                                         />
                                     </div>
                                 </div>
@@ -319,11 +379,22 @@ export default function CreateHousehold({ onComplete = () => { }, onBack = () =>
                                 <div>
                                     <Label>Additional Areas</Label>
                                     <div style={{ display: "flex", gap: "16px", marginTop: "8px" }}>
-                                        <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
+                                        <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: loading ? "not-allowed" : "pointer" }}>
+                                            <input
+                                                type="checkbox"
+                                                checked={hasLivingSpace}
+                                                onChange={(e) => setHasLivingSpace(e.target.checked)}
+                                                disabled={loading}
+                                                style={{ width: "16px", height: "16px", accentColor: "#7c3aed" }}
+                                            />
+                                            <span style={{ fontSize: "14px", color: "#374151" }}>Living Space</span>
+                                        </label>
+                                        <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: loading ? "not-allowed" : "pointer" }}>
                                             <input
                                                 type="checkbox"
                                                 checked={hasPatio}
                                                 onChange={(e) => setHasPatio(e.target.checked)}
+                                                disabled={loading}
                                                 style={{ width: "16px", height: "16px", accentColor: "#7c3aed" }}
                                             />
                                             <span style={{ fontSize: "14px", color: "#374151" }}>Patio</span>
@@ -338,6 +409,7 @@ export default function CreateHousehold({ onComplete = () => { }, onBack = () =>
                                         value={otherDetails}
                                         onChange={(e) => setOtherDetails(e.target.value)}
                                         placeholder="Any other details about your home..."
+                                        disabled={loading}
                                         style={{
                                             width: "100%",
                                             padding: "8px 12px",
@@ -376,12 +448,19 @@ export default function CreateHousehold({ onComplete = () => { }, onBack = () =>
                                     onClick={handleContinueToSurvey}
                                     style={{
                                         width: "100%",
-                                        opacity: 1,
-                                        cursor: "pointer"
+                                        opacity: loading ? 0.5 : 1,
+                                        cursor: loading ? "not-allowed" : "pointer"
                                     }}
+                                    disabled={loading}
                                 >
-                                    <Sparkles style={{ width: "16px", height: "16px", marginRight: "8px" }} />
-                                    Continue to Survey
+                                    {loading ? (
+                                        "Creating..."
+                                    ) : (
+                                        <>
+                                            <Sparkles style={{ width: "16px", height: "16px", marginRight: "8px" }} />
+                                            Continue to Survey
+                                        </>
+                                    )}
                                 </Button>
                             </div>
                         )}
@@ -423,7 +502,7 @@ function BackButton({ onClick, children }) {
 }
 
 // Custom Remove Button Component
-function RemoveButton({ onClick, children }) {
+function RemoveButton({ onClick, children, disabled }) {
     const [isHovered, setIsHovered] = useState(false);
 
     return (
@@ -431,19 +510,21 @@ function RemoveButton({ onClick, children }) {
             onClick={onClick}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
+            disabled={disabled}
             style={{
                 width: "24px",
                 height: "24px",
                 padding: "0",
-                backgroundColor: isHovered ? "#fef2f2" : "transparent",
+                backgroundColor: isHovered && !disabled ? "#fef2f2" : "transparent",
                 color: "#dc2626",
                 border: "none",
                 borderRadius: "4px",
-                cursor: "pointer",
+                cursor: disabled ? "not-allowed" : "pointer",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                transition: "background-color 0.2s"
+                transition: "background-color 0.2s",
+                opacity: disabled ? 0.5 : 1
             }}
         >
             {children}
@@ -451,8 +532,8 @@ function RemoveButton({ onClick, children }) {
     );
 }
 
-// Custom Select Button Component
-function SelectButton({ selected, onClick, children }) {
+// Custom Select Button Component (kept for potential future use)
+function SelectButton({ selected, onClick, children, disabled }) {
     const [isHovered, setIsHovered] = useState(false);
 
     return (
@@ -460,17 +541,19 @@ function SelectButton({ selected, onClick, children }) {
             onClick={onClick}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
+            disabled={disabled}
             style={{
                 padding: "12px 16px",
-                backgroundColor: selected ? "#faf5ff" : (isHovered ? "#f9fafb" : "white"),
+                backgroundColor: selected ? "#faf5ff" : (isHovered && !disabled ? "#f9fafb" : "white"),
                 border: selected ? "2px solid #7c3aed" : "2px solid #d1d5db",
                 color: selected ? "#7c3aed" : "#111827",
                 borderRadius: "8px",
-                cursor: "pointer",
+                cursor: disabled ? "not-allowed" : "pointer",
                 fontSize: "14px",
                 fontWeight: "500",
                 transition: "all 0.2s",
-                fontFamily: "system-ui, -apple-system, sans-serif"
+                fontFamily: "system-ui, -apple-system, sans-serif",
+                opacity: disabled ? 0.5 : 1
             }}
         >
             {children}

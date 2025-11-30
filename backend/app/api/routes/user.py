@@ -2,7 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 
-from ...schemas.user import UserProfileResponse, HouseInfo, UserPreferencesInfo
+from ...schemas.user import UserProfileResponse, UserPreferencesInfo
+from ...schemas.house import HouseInfo
 from ...models.model import User, House, UserPreference, Ticket
 from ..dependencies import get_current_user
 from ...db.database import get_db

@@ -8,7 +8,10 @@ class ChoreCreate(BaseModel):
     name: str
     description: Optional[str] = None
     difficulty_level: int  # 1-5
+    duration: int  # in minutes
     chore_frequency: str  # "Weekly", "Daily"
+    chore_priority: int  # 1-3 low medium high
+    notes: Optional[str] = None
 
 
 class TicketUpdate(BaseModel):

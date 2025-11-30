@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any, Literal
 from datetime import datetime
+from .house import HouseInfo
 
 
 # --- User Schemas (placeholders, adjust as needed) ---
@@ -16,14 +17,6 @@ class UserLogin(BaseModel):
 
 
 # --- User Profile Response Schemas ---
-class HouseInfo(BaseModel):
-    id: str
-    name: str
-    address: Optional[str]
-    house_layout: Optional[Dict[str, Any]]
-    invite_code: str
-
-
 class UserPreferencesInfo(BaseModel):
     cleanliness_level: Optional[int]
     time_availability: Optional[
