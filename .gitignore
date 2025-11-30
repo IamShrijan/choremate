@@ -46,6 +46,7 @@ node_modules/
 dist/
 build/
 .cache/
+package-lock.json
 
 # Logs
 *.log
