@@ -12,6 +12,7 @@ class ChoreCreate(BaseModel):
     chore_frequency: str  # "Weekly", "Daily"
     chore_priority: int  # 1-3 low medium high
     notes: Optional[str] = None
+    icon: Optional[str] = None  # NEW
 
 
 class TicketUpdate(BaseModel):
@@ -41,6 +42,10 @@ class GeneratedChore(BaseModel):
     notes: Optional[str] = Field(
         default=None, description="Any additional notes or considerations"
     )
+    icon: Optional[str] = Field(  # NEW
+        default=None,
+        description="Emoji or icon name representing this chore (from default chores list)",
+    )
     assigned_user_id: str = Field(
         description="User ID who should be assigned this specific instance"
     )
@@ -53,5 +58,6 @@ class GeneratedChore(BaseModel):
         description="Day of the week for this instance (required for Daily chores, optional for others)",
     )
     reason: Optional[str] = Field(
-        default=None, description="Reason for the assignment to this user"
+        default=None,
+        description="Concrete reason for the assignment to this user. This will be shown to the user when they view their chores.",
     )

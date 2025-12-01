@@ -66,6 +66,7 @@ class Chore(Base):
     chore_frequency = Column(String)  # "Daily", "Weekly", "Monthly", "One-time"
     chore_priority = Column(Integer)  # 1-3 low medium high
     notes = Column(String)
+    icon = Column(String, nullable=True)  # NEW: emoji / icon name
     house_id = Column(UUIDStr, ForeignKey("houses.id"))
 
 

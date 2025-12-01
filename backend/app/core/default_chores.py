@@ -14,6 +14,7 @@ CHORES: List[Dict[str, Any]] = [
         "chore_frequency": "Daily",
         "chore_priority": 2,
         "notes": "Clean kitchen counters and surfaces",
+        "icon": "🧽",
     },
     {
         "name": "Dishes",
@@ -23,6 +24,7 @@ CHORES: List[Dict[str, Any]] = [
         "chore_frequency": "Daily",
         "chore_priority": 3,
         "notes": "Wash dishes, load/unload dishwasher, or hand wash",
+        "icon": "🍽️",
     },
     {
         "name": "Kitchen Floors",
@@ -32,6 +34,7 @@ CHORES: List[Dict[str, Any]] = [
         "chore_frequency": "Weekly",
         "chore_priority": 2,
         "notes": "Sweep and mop kitchen floor area",
+        "icon": "🧹",
     },
     {
         "name": "Taking Out Trash",
@@ -41,6 +44,7 @@ CHORES: List[Dict[str, Any]] = [
         "chore_frequency": "Weekly",
         "chore_priority": 2,
         "notes": "Take out trash and recycling bins to the curb or disposal area",
+        "icon": "🗑️",
     },
     {
         "name": "Cleaning Toilet",
@@ -50,6 +54,7 @@ CHORES: List[Dict[str, Any]] = [
         "chore_frequency": "Weekly",
         "chore_priority": 2,
         "notes": "Clean and sanitize toilet bowl, seat, and surrounding area",
+        "icon": "🚽",
     },
     {
         "name": "Cleaning Shower",
@@ -59,6 +64,7 @@ CHORES: List[Dict[str, Any]] = [
         "chore_frequency": "Weekly",
         "chore_priority": 2,
         "notes": "Clean shower/tub area including walls, floor, and fixtures",
+        "icon": "🚿",
     },
     {
         "name": "Bathroom Sink",
@@ -68,6 +74,7 @@ CHORES: List[Dict[str, Any]] = [
         "chore_frequency": "Weekly",
         "chore_priority": 2,
         "notes": "Clean and sanitize bathroom sink, mirror, and counter area",
+        "icon": "🪥",
     },
     {
         "name": "Bathroom Floors",
@@ -77,6 +84,7 @@ CHORES: List[Dict[str, Any]] = [
         "chore_frequency": "Weekly",
         "chore_priority": 2,
         "notes": "Sweep and mop bathroom floor area",
+        "icon": "🧽",
     },
     {
         "name": "Living Room Tidying",
@@ -86,6 +94,7 @@ CHORES: List[Dict[str, Any]] = [
         "chore_frequency": "Daily",
         "chore_priority": 1,
         "notes": "Tidy up living room, organize items, fluff cushions, arrange furniture",
+        "icon": "🛋️",
     },
     {
         "name": "Vacuuming",
@@ -95,6 +104,7 @@ CHORES: List[Dict[str, Any]] = [
         "chore_frequency": "Weekly",
         "chore_priority": 2,
         "notes": "Vacuum carpets, rugs, and floor areas throughout the house",
+        "icon": "🪠",
     },
     {
         "name": "Dusting",
@@ -104,6 +114,7 @@ CHORES: List[Dict[str, Any]] = [
         "chore_frequency": "Weekly",
         "chore_priority": 1,
         "notes": "Dust furniture, shelves, and surfaces throughout the house",
+        "icon": "🧹",
     },
     {
         "name": "Grocery Shopping",
@@ -113,6 +124,7 @@ CHORES: List[Dict[str, Any]] = [
         "chore_frequency": "Weekly",
         "chore_priority": 3,
         "notes": "Plan meals, create shopping list, and purchase household groceries",
+        "icon": "🛒",
     },
 ]
 

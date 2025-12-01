@@ -27,7 +27,9 @@ def add_chore(
         difficulty_level=chore.difficulty_level,
         chore_frequency=chore.chore_frequency,
         chore_priority=chore.chore_priority,
+        duration=chore.duration,
         notes=chore.notes,
+        icon=chore.icon,
         house_id=current_user.house_id,
     )
 
