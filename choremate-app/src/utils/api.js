@@ -136,5 +136,14 @@ export const preferencesAPI = {
     },
   };
 
+// Chores / schedule API
+export const choresAPI = {
+    generateHouseChores: async () => {
+      return apiRequest('/chores/generate-house-chores', {
+        method: 'POST',
+      });
+    },
+  };
+
 // Export the base request function for other API calls
 export default apiRequest;
