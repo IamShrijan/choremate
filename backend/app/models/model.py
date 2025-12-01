@@ -20,6 +20,8 @@ class House(Base):
     address = Column(String)
     house_layout = Column(JSON)  # stored as JSON
     invite_code = Column(String, unique=True, index=True)
+    joined_users = Column(JSON, default=lambda: [])  # list of user IDs
+    invited_emails = Column(JSON, default=lambda: [])  # list of invited email addresses
 
 
 class User(Base):
@@ -64,6 +66,7 @@ class Chore(Base):
     chore_frequency = Column(String)  # "Daily", "Weekly", "Monthly", "One-time"
     chore_priority = Column(Integer)  # 1-3 low medium high
     notes = Column(String)
+    icon = Column(String, nullable=True)  # NEW: emoji / icon name
     house_id = Column(UUIDStr, ForeignKey("houses.id"))
 
 
@@ -92,4 +95,39 @@ class Appreciation(Base):
     ticket_id = Column(UUIDStr, ForeignKey("tickets.id"))
     appreciated_by = Column(UUIDStr, ForeignKey("users.id"))
     message = Column(String)
+    created_at = Column(DateTime, server_default=func.now())
+
+
+class SwapRequest(Base):
+    __tablename__ = "swap_requests"
+
+    id = Column(
+        UUIDStr, primary_key=True, index=True, default=lambda: str(uuid.uuid4())
+    )
+    ticket_id = Column(UUIDStr, ForeignKey("tickets.id"))
+    requester_user_id = Column(UUIDStr, ForeignKey("users.id"))
+    target_user_id = Column(UUIDStr, ForeignKey("users.id"))
+    reason = Column(String, nullable=True)
+    status = Column(String, default="Pending")  # Pending, Accepted, Rejected
+    ai_analysis = Column(JSON, nullable=True)  # Store AI's reasoning
+    created_at = Column(DateTime, server_default=func.now())
+    responded_at = Column(DateTime, nullable=True)
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(
+        UUIDStr, primary_key=True, index=True, default=lambda: str(uuid.uuid4())
+    )
+    user_id = Column(UUIDStr, ForeignKey("users.id"))
+    notification_type = Column(
+        String
+    )  # swap_request, swap_accepted, swap_rejected, etc.
+    title = Column(String)
+    message = Column(String)
+    related_id = Column(
+        UUIDStr, nullable=True
+    )  # Reference to swap_request, ticket, etc.
+    is_read = Column(Integer, default=0)  # SQLite uses 0/1 for boolean
     created_at = Column(DateTime, server_default=func.now())

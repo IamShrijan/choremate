@@ -26,8 +26,13 @@ def add_chore(
         description=chore.description,
         difficulty_level=chore.difficulty_level,
         chore_frequency=chore.chore_frequency,
+        chore_priority=chore.chore_priority,
+        duration=chore.duration,
+        notes=chore.notes,
+        icon=chore.icon,
         house_id=current_user.house_id,
     )
+
     db.add(new_chore)
     db.commit()
     db.refresh(new_chore)
@@ -66,6 +71,9 @@ def generate_house_chores_for_users(
         raise HTTPException(status_code=400, detail=result["message"])
 
     return result
+
+
+# TODO: Add an api to create new tickets after generated/edited chores
 
 
 @router.post("/generate-monthly-batch")

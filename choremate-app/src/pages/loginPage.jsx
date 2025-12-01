@@ -4,6 +4,7 @@ import Button from "../components/button";
 import Input from "../components/input";
 import Label from "../components/label";
 import { Card, CardContent } from "../components/card";
+import { authAPI } from "../utils/api";
 
 // Main LoginPage Component
 export default function LoginPage({ onLogin = () => { } }) {
@@ -12,14 +13,155 @@ export default function LoginPage({ onLogin = () => { } }) {
     const [password, setPassword] = useState("");
     const [name, setName] = useState("");
     const [hoveredCard, setHoveredCard] = useState(null);
+    const [error, setError] = useState("");
+    const [loading, setLoading] = useState(false);
+    
+    // Field-level validation errors
+    const [fieldErrors, setFieldErrors] = useState({
+        name: "",
+        email: "",
+        password: ""
+    });
 
+    // Email validation regex: must have @ and domain with at least 3 characters after dot
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]{3,}$/;
 
-    const handleSubmit = () => {
-        onLogin(isSignup);
+    // Validate email format
+    const validateEmail = (emailValue) => {
+        if (!emailValue) {
+            return "Email is required";
+        }
+        if (!emailRegex.test(emailValue)) {
+            return "Please enter a valid email address (e.g., user@example.com)";
+        }
+        return "";
+    };
+
+    // Validate password
+    const validatePassword = (passwordValue) => {
+        if (!passwordValue) {
+            return "Password is required";
+        }
+        if (passwordValue.length < 4) {
+            return "Password must be at least 4 characters";
+        }
+        return "";
+    };
+
+    // Validate name (for signup)
+    const validateName = (nameValue) => {
+        if (!nameValue || nameValue.trim() === "") {
+            return "Full name is required";
+        }
+        return "";
+    };
+
+    // Update field errors when values change
+    const handleEmailChange = (e) => {
+        const value = e.target.value;
+        setEmail(value);
+        setFieldErrors(prev => ({
+            ...prev,
+            email: validateEmail(value)
+        }));
+        setError(""); // Clear general error when user types
+    };
+
+    const handlePasswordChange = (e) => {
+        const value = e.target.value;
+        setPassword(value);
+        setFieldErrors(prev => ({
+            ...prev,
+            password: validatePassword(value)
+        }));
+        setError(""); // Clear general error when user types
+    };
+
+    const handleNameChange = (e) => {
+        const value = e.target.value;
+        setName(value);
+        setFieldErrors(prev => ({
+            ...prev,
+            name: validateName(value)
+        }));
+        setError(""); // Clear general error when user types
+    };
+
+    // Check if form is valid
+    const isFormValid = () => {
+        if (isSignup) {
+            return (
+                name.trim() !== "" &&
+                email.trim() !== "" &&
+                password.length >= 4 &&
+                emailRegex.test(email) &&
+                fieldErrors.name === "" &&
+                fieldErrors.email === "" &&
+                fieldErrors.password === ""
+            );
+        } else {
+            return (
+                email.trim() !== "" &&
+                password.length >= 4 &&
+                emailRegex.test(email) &&
+                fieldErrors.email === "" &&
+                fieldErrors.password === ""
+            );
+        }
+    };
+
+    const handleSubmit = async () => {
+        setError("");
+        
+        // Validate all fields before submission
+        const emailError = validateEmail(email);
+        const passwordError = validatePassword(password);
+        const nameError = isSignup ? validateName(name) : "";
+
+        setFieldErrors({
+            name: nameError,
+            email: emailError,
+            password: passwordError
+        });
+
+        // If any validation fails, don't submit
+        if (emailError || passwordError || nameError) {
+            setError("Please fix the errors above before submitting");
+            return;
+        }
+
+        setLoading(true);
+
+        try {
+            if (isSignup) {
+                await authAPI.signup(name, email, password);
+                // After signup, automatically log in
+                await authAPI.login(email, password);
+            } else {
+                await authAPI.login(email, password);
+            }
+            
+            // On successful auth, call the onLogin callback
+            onLogin(isSignup);
+        } catch (err) {
+            setError(err.message || "Authentication failed. Please try again.");
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleGoogleLogin = () => {
-        onLogin(true);
+        // TODO: Implement Google OAuth
+        setError("Google login not yet implemented");
+    };
+
+    const handleModeSwitch = (signupMode) => {
+        setIsSignup(signupMode);
+        setError("");
+        setFieldErrors({ name: "", email: "", password: "" });
+        setEmail("");
+        setPassword("");
+        setName("");
     };
 
     return (
@@ -68,7 +210,6 @@ export default function LoginPage({ onLogin = () => { } }) {
                     </p>
                 </div>
 
-                {/* Feature Cards */}
                 {/* Feature Cards */}
                 <div style={{
                     display: "grid",
@@ -199,18 +340,34 @@ export default function LoginPage({ onLogin = () => { } }) {
                 {/* Login/Signup Form */}
                 <Card style={{ boxShadow: "0 10px 25px rgba(0, 0, 0, 0.1)" }}>
                     <CardContent style={{ padding: "32px" }}>
+                        {/* Error message */}
+                        {error && (
+                            <div style={{
+                                padding: "12px",
+                                backgroundColor: "#fee2e2",
+                                color: "#dc2626",
+                                borderRadius: "6px",
+                                marginBottom: "20px",
+                                fontSize: "14px"
+                            }}>
+                                {error}
+                            </div>
+                        )}
+
                         <div style={{ display: "flex", gap: "12px", marginBottom: "32px" }}>
                             <Button
                                 variant={!isSignup ? "default" : "outline"}
                                 style={{ flex: 1 }}
-                                onClick={() => setIsSignup(false)}
+                                onClick={() => handleModeSwitch(false)}
+                                disabled={loading}
                             >
                                 Login
                             </Button>
                             <Button
                                 variant={isSignup ? "default" : "outline"}
                                 style={{ flex: 1 }}
-                                onClick={() => setIsSignup(true)}
+                                onClick={() => handleModeSwitch(true)}
+                                disabled={loading}
                             >
                                 Sign Up
                             </Button>
@@ -224,9 +381,23 @@ export default function LoginPage({ onLogin = () => { } }) {
                                         id="name"
                                         type="text"
                                         value={name}
-                                        onChange={(e) => setName(e.target.value)}
+                                        onChange={handleNameChange}
                                         placeholder="John Doe"
+                                        disabled={loading}
+                                        style={{
+                                            borderColor: fieldErrors.name ? "#dc2626" : undefined
+                                        }}
                                     />
+                                    {fieldErrors.name && (
+                                        <p style={{
+                                            color: "#dc2626",
+                                            fontSize: "12px",
+                                            marginTop: "4px",
+                                            marginBottom: 0
+                                        }}>
+                                            {fieldErrors.name}
+                                        </p>
+                                    )}
                                 </div>
                             )}
 
@@ -236,9 +407,23 @@ export default function LoginPage({ onLogin = () => { } }) {
                                     id="email"
                                     type="email"
                                     value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
+                                    onChange={handleEmailChange}
                                     placeholder="you@example.com"
+                                    disabled={loading}
+                                    style={{
+                                        borderColor: fieldErrors.email ? "#dc2626" : undefined
+                                    }}
                                 />
+                                {fieldErrors.email && (
+                                    <p style={{
+                                        color: "#dc2626",
+                                        fontSize: "12px",
+                                        marginTop: "4px",
+                                        marginBottom: 0
+                                    }}>
+                                        {fieldErrors.email}
+                                    </p>
+                                )}
                             </div>
 
                             <div>
@@ -247,16 +432,46 @@ export default function LoginPage({ onLogin = () => { } }) {
                                     id="password"
                                     type="password"
                                     value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
+                                    onChange={handlePasswordChange}
                                     placeholder="••••••••"
+                                    disabled={loading}
+                                    style={{
+                                        borderColor: fieldErrors.password ? "#dc2626" : undefined
+                                    }}
                                 />
+                                {fieldErrors.password && (
+                                    <p style={{
+                                        color: "#dc2626",
+                                        fontSize: "12px",
+                                        marginTop: "4px",
+                                        marginBottom: 0
+                                    }}>
+                                        {fieldErrors.password}
+                                    </p>
+                                )}
+                                {!fieldErrors.password && password.length > 0 && password.length < 4 && (
+                                    <p style={{
+                                        color: "#f59e0b",
+                                        fontSize: "12px",
+                                        marginTop: "4px",
+                                        marginBottom: 0
+                                    }}>
+                                        Password must be at least 4 characters
+                                    </p>
+                                )}
                             </div>
 
                             <Button
                                 onClick={handleSubmit}
-                                style={{ width: "100%", marginTop: "8px" }}
+                                style={{ 
+                                    width: "100%", 
+                                    marginTop: "8px",
+                                    opacity: isFormValid() ? 1 : 0.6,
+                                    cursor: isFormValid() ? "pointer" : "not-allowed"
+                                }}
+                                disabled={loading || !isFormValid()}
                             >
-                                {isSignup ? "Create Account" : "Sign In"}
+                                {loading ? "Please wait..." : (isSignup ? "Create Account" : "Sign In")}
                             </Button>
                         </div>
 
@@ -286,6 +501,7 @@ export default function LoginPage({ onLogin = () => { } }) {
                             variant="outline"
                             style={{ width: "100%" }}
                             onClick={handleGoogleLogin}
+                            disabled={loading}
                         >
                             <svg style={{ width: "20px", height: "20px", marginRight: "10px" }} viewBox="0 0 24 24">
                                 <path

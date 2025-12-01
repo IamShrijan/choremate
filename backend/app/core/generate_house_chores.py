@@ -261,7 +261,7 @@ def generate_house_chores(db: Session, house_id: str) -> Dict[str, Any]:
     try:
         # 7. Generate content with structured output
         response = client.models.generate_content(
-            model="gemini-2.5-pro",
+            model="gemini-2.5-flash",
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",

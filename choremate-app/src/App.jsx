@@ -1,22 +1,86 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import LoginPage from './pages/loginPage.jsx';
 import HouseholdSelection from './pages/houseHoldSelection.jsx';
 import CreateHousehold from './pages/createHouseHold.jsx';
 import WaitingForRoomatesPage from './pages/waitingForRoomatePage.jsx';
 import SurveyFlow from './pages/surveyFlow.jsx';
 import GeneratedSchedulePage from './pages/generatedSchedulePage.jsx';
+import { authAPI, userAPI } from './utils/api';
 import './App.css';
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [currentView, setCurrentView] = useState('household-selection'); // 'household-selection', 'create', 'join', 'main'
+  const [currentView, setCurrentView] = useState('household-selection');
   const [isHovered, setIsHovered] = useState(false);
-  const [roommates, setRoommates] = useState([]);
+  // Remove roommates state - not needed anymore
+  // const [roommates, setRoommates] = useState([]);
+  const [isCheckingHousehold, setIsCheckingHousehold] = useState(false);
 
-  const handleLogin = (isNewUser) => {
+  // Check if user is already logged in on mount and has a household
+  useEffect(() => {
+    const checkAuthAndHousehold = async () => {
+      const token = localStorage.getItem('auth_token');
+      if (token) {
+        setIsCheckingHousehold(true);
+        try {
+          const userInfo = await userAPI.getCurrentUser();
+          if (userInfo.house_id) {
+            // User has a household, go directly to main dashboard
+            setIsLoggedIn(true);
+            setCurrentView('main');
+          } else {
+            // User doesn't have a household, show household selection
+            setIsLoggedIn(true);
+            setCurrentView('household-selection');
+          }
+        } catch (error) {
+          console.error('Error checking user household:', error);
+          // If token is invalid, clear it and show login
+          localStorage.removeItem('auth_token');
+          setIsLoggedIn(false);
+        } finally {
+          setIsCheckingHousehold(false);
+        }
+      }
+    };
+
+    checkAuthAndHousehold();
+  }, []);
+
+  const handleLogin = async (isNewUser) => {
     console.log('User logged in:', isNewUser ? 'New User' : 'Existing User');
     setIsLoggedIn(true);
-    setCurrentView('household-selection');
+    
+    // Check if user has a household
+    setIsCheckingHousehold(true);
+    try {
+      const userInfo = await userAPI.getCurrentUser();
+      if (userInfo.house_id) {
+        // User has a household, skip household creation and go to main dashboard
+        setCurrentView('main');
+      } else {
+        // User doesn't have a household, show household selection
+        setCurrentView('household-selection');
+      }
+    } catch (error) {
+      console.error('Error checking user household:', error);
+      // If there's an error, default to household selection
+      setCurrentView('household-selection');
+    } finally {
+      setIsCheckingHousehold(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await authAPI.logout();
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Still clear local state even if API call fails
+    } finally {
+      setIsLoggedIn(false);
+      setCurrentView('household-selection');
+    }
   };
 
   const handleCreateHousehold = () => {
@@ -39,8 +103,7 @@ function App() {
 
   const handleCompleteSetup = (householdData) => {
     console.log('Household created:', householdData);
-    setRoommates(householdData.roommates || []);
-    console.log('Roommates:', roommates);
+    // Don't need to set roommates anymore
     setCurrentView('survey-flow');
   };
 
@@ -53,6 +116,33 @@ function App() {
     console.log(chores);
     setCurrentView('main');
   };
+
+  // Show loading state while checking household
+  if (isCheckingHousehold) {
+    return (
+      <div style={{
+        minHeight: "100vh",
+        background: "linear-gradient(to bottom right, #faf5ff, #faf5ff, #f3e8ff)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontFamily: "system-ui, -apple-system, sans-serif"
+      }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{
+            width: "48px",
+            height: "48px",
+            border: "4px solid #f3e8ff",
+            borderTop: "4px solid #7c3aed",
+            borderRadius: "50%",
+            animation: "spin 1s linear infinite",
+            margin: "0 auto 16px"
+          }}></div>
+          <p style={{ color: "#6b7280", fontSize: "14px" }}>Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!isLoggedIn) {
     return <LoginPage onLogin={handleLogin} />;
@@ -88,7 +178,7 @@ function App() {
   if (currentView === 'waiting-for-roomates') {
     return (
       <WaitingForRoomatesPage
-        roommates={roommates}
+        // Remove roommates prop - let it fetch from API
         onContinue={handleCompleteHouseholdSurvey}
       />
     );
@@ -121,10 +211,7 @@ function App() {
         You're now part of a household.
       </p>
       <button
-        onClick={() => {
-          setIsLoggedIn(false);
-          setCurrentView('household-selection');
-        }}
+        onClick={handleLogout}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
         style={{

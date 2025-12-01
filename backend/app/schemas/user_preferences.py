@@ -30,8 +30,8 @@ class UserPreferencesUpdate(BaseModel):
         "json_schema_extra": {
             "example": {
                 "cleanliness_level": 3,
-                "time_availability": ["morning", "evening"],
-                "day_availability": ["weekday"],
+                "time_availability": ["morning", "evening", "night", "afternoon"],
+                "day_availability": ["weekday", "weekend"],
                 "chore_preferences": get_default_chore_preferences(),
                 "special_requirements": "I have allergies to strong cleaning products",
             }

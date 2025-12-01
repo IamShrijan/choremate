@@ -1,23 +1,101 @@
+// choremate-app/src/pages/waitingForRoomatePage.jsx
 import { Sparkles, Check, Clock, Copy } from "lucide-react";
 import Button from "../components/button";
 import { Card, CardContent } from "../components/card";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { houseAPI } from "../utils/api";
 
 export default function WaitingForRoommatesPage({
-    inviteCode,
-    roommates,
+    inviteCode, // Can be undefined now
+    roommates: initialRoommates, // Optional
     onContinue = () => { },
 }) {
     const [copied, setCopied] = useState(false);
-    const completedCount = roommates.filter((r) => r.completed).length;
-    const totalCount = roommates.length;
-    const allCompleted = completedCount === totalCount;
+    const [membersStatus, setMembersStatus] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+
+    // Fetch members status periodically
+    useEffect(() => {
+        const fetchStatus = async () => {
+            try {
+                const status = await houseAPI.getMembersStatus();
+                setMembersStatus(status);
+                
+                // Convert to the format expected by the component
+                const formattedRoommates = status.members.map(member => ({
+                    id: member.user_id || member.email,
+                    emailOrPhone: member.email,
+                    name: member.name,
+                    completed: member.preferences_completed,
+                }));
+                
+                // Update roommates if we have initial data
+                if (initialRoommates) {
+                    // Merge with initial roommates to preserve order
+                    const merged = initialRoommates.map(rm => {
+                        const found = formattedRoommates.find(
+                            fr => fr.emailOrPhone === rm.emailOrPhone
+                        );
+                        return found || rm;
+                    });
+                    setMembersStatus(prev => ({
+                        ...prev,
+                        members: merged.map(rm => ({
+                            user_id: rm.id,
+                            name: rm.name,
+                            email: rm.emailOrPhone,
+                            has_joined: true,
+                            preferences_completed: rm.completed || false,
+                        })),
+                    }));
+                }
+            } catch (err) {
+                setError(err.message || "Failed to fetch status");
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchStatus();
+        
+        // Poll every 5 seconds to check for updates
+        const interval = setInterval(fetchStatus, 5000);
+        
+        return () => clearInterval(interval);
+    }, [inviteCode, initialRoommates]);
 
     const handleCopyCode = () => {
-        navigator.clipboard.writeText(inviteCode);
+        const code = membersStatus?.invite_code || inviteCode;
+        navigator.clipboard.writeText(code);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
     };
+
+    if (loading && !membersStatus) {
+        return (
+            <div style={{
+                minHeight: "100vh",
+                background: "linear-gradient(to bottom right, #faf5ff, #f3e8ff)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+            }}>
+                <p style={{ color: "#6b7280" }}>Loading...</p>
+            </div>
+        );
+    }
+
+    const members = membersStatus?.members || [];
+
+    // Count EVERY row we show (joined + invited)
+    const totalCount = members.length;
+    const completedCount = members.filter(m => m.preferences_completed).length;
+
+    // Only "Everyone's Ready" when EVERY row has preferences_completed === true
+    const allCompleted = totalCount > 0 && completedCount === totalCount;
+
+    const displayInviteCode = membersStatus?.invite_code || inviteCode;
 
     return (
         <div style={{
@@ -50,14 +128,28 @@ export default function WaitingForRoommatesPage({
                         fontSize: "28px",
                         fontWeight: "600",
                     }}>
-                        {allCompleted ? "Everyone's Ready!" : "Waiting for Roommates"}
+                        {allCompleted ? "Everyone's Ready!" : "Waiting for Everyone to Complete Survey"}
                     </h1>
                     <p style={{ color: "#6b7280", fontSize: "16px" }}>
                         {allCompleted
                             ? "All roommates have completed their surveys"
-                            : "Your roommates need to complete their preference surveys"}
+                            : "Once everyone completes their preferences, you can generate the schedule"}
                     </p>
                 </div>
+
+                {/* Error message */}
+                {error && (
+                    <div style={{
+                        padding: "12px",
+                        backgroundColor: "#fee2e2",
+                        color: "#dc2626",
+                        borderRadius: "6px",
+                        marginBottom: "20px",
+                        fontSize: "14px"
+                    }}>
+                        {error}
+                    </div>
+                )}
 
                 {/* Progress Card */}
                 <Card style={{
@@ -115,32 +207,52 @@ export default function WaitingForRoommatesPage({
                                 height: "12px",
                                 borderRadius: "9999px",
                                 transition: "width 0.5s ease",
-                                width: `${(completedCount / totalCount) * 100}%`,
+                                width: `${totalCount > 0 ? (completedCount / totalCount) * 100 : 0}%`,
                             }} />
                         </div>
 
                         {/* Roommate List */}
                         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-                            {roommates.map((roommate, index) => (
+                            {members.map((member, index) => (
                                 <div
-                                    key={index}
+                                    key={member.user_id || member.email || index}
                                     style={{
                                         display: "flex",
                                         alignItems: "center",
                                         justifyContent: "space-between",
                                         padding: "16px",
                                         borderRadius: "8px",
-                                        border: roommate.completed ? "1px solid #bbf7d0" : "1px solid #e5e7eb",
-                                        backgroundColor: roommate.completed ? "#f0fdf4" : "#f9fafb",
+                                        border: member.preferences_completed ? "1px solid #bbf7d0" : "1px solid #e5e7eb",
+                                        backgroundColor: member.preferences_completed ? "#f0fdf4" : "#f9fafb",
                                     }}
                                 >
-                                    <span style={{
-                                        color: "#111827",
-                                        fontSize: "12px",
-                                    }}>
-                                        {roommate.emailOrPhone}
-                                    </span>
-                                    {roommate.completed ? (
+                                    <div style={{ display: "flex", flexDirection: "column" }}>
+                                        <span style={{
+                                            color: "#111827",
+                                            fontSize: "14px",
+                                            fontWeight: "500",
+                                        }}>
+                                            {member.name || member.email}
+                                        </span>
+                                        {member.name && (
+                                            <span style={{
+                                                color: "#6b7280",
+                                                fontSize: "12px",
+                                            }}>
+                                                {member.email}
+                                            </span>
+                                        )}
+                                        {!member.has_joined && (
+                                            <span style={{
+                                                color: "#f59e0b",
+                                                fontSize: "12px",
+                                                fontStyle: "italic",
+                                            }}>
+                                                Invited (not joined yet)
+                                            </span>
+                                        )}
+                                    </div>
+                                    {member.preferences_completed ? (
                                         <Check style={{ width: "20px", height: "20px", color: "#16a34a" }} />
                                     ) : (
                                         <Clock style={{ width: "20px", height: "20px", color: "#9ca3af" }} />
@@ -185,7 +297,7 @@ export default function WaitingForRoommatesPage({
                                         fontSize: "18px",
                                         fontWeight: "600",
                                     }}>
-                                        {inviteCode}
+                                        {displayInviteCode}
                                     </code>
                                 </div>
                                 <Button
@@ -220,39 +332,43 @@ export default function WaitingForRoommatesPage({
                     </CardContent>
                 </Card>
 
-                {/* Action Button */}
-                {/* TODO: Re add All Completed logic after backend is ready */}
-                {/* {allCompleted && onContinue && ( */}
-                {onContinue && (
-                    <Button
-                        onClick={onContinue}
-                        style={{
-                            width: "100%",
-                            backgroundColor: "#16a34a",
-                            color: "white",
-                            padding: "24px",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontSize: "16px",
-                            fontWeight: "600",
-                        }}
-                        onMouseEnter={(e) => {
+                {/* Action Button - Always show, but disabled until all completed */}
+                <Button
+                    onClick={onContinue}
+                    disabled={!allCompleted}
+                    style={{
+                        width: "100%",
+                        backgroundColor: allCompleted ? "#16a34a" : "#d1d5db",
+                        color: allCompleted ? "white" : "#9ca3af",
+                        padding: "24px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: "16px",
+                        fontWeight: "600",
+                        cursor: allCompleted ? "pointer" : "not-allowed",
+                        opacity: allCompleted ? 1 : 0.6,
+                        transition: "all 0.3s ease",
+                    }}
+                    onMouseEnter={(e) => {
+                        if (allCompleted) {
                             e.currentTarget.style.backgroundColor = "#15803d";
-                        }}
-                        onMouseLeave={(e) => {
+                        }
+                    }}
+                    onMouseLeave={(e) => {
+                        if (allCompleted) {
                             e.currentTarget.style.backgroundColor = "#16a34a";
-                        }}
-                    >
-                        <Sparkles style={{ width: "20px", height: "20px", marginRight: "8px" }} />
-                        Generate Household Schedule
-                    </Button>
-                )}
+                        }
+                    }}
+                >
+                    <Sparkles style={{ width: "20px", height: "20px", marginRight: "8px" }} />
+                    Generate Household Schedule
+                </Button>
 
                 {!allCompleted && (
-                    <div style={{ textAlign: "center" }}>
+                    <div style={{ textAlign: "center", marginTop: "16px" }}>
                         <p style={{ color: "#6b7280", fontSize: "12px" }}>
-                            We'll notify you when everyone completes their survey
+                            Waiting for {totalCount - completedCount} more roommate{totalCount - completedCount !== 1 ? 's' : ''} to complete their survey
                         </p>
                     </div>
                 )}
@@ -260,15 +376,15 @@ export default function WaitingForRoommatesPage({
 
             {/* Pulse animation for Clock */}
             <style>{`
-        @keyframes pulse {
-          0%, 100% {
-            opacity: 1;
-          }
-          50% {
-            opacity: 0.5;
-          }
-        }
-      `}</style>
+                @keyframes pulse {
+                  0%, 100% {
+                    opacity: 1;
+                  }
+                  50% {
+                    opacity: 0.5;
+                  }
+                }
+            `}</style>
         </div>
     );
 }
