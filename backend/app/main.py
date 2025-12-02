@@ -11,13 +11,17 @@ from .api.routes.chatbot import router as chatbot_router
 
 app = FastAPI(title="Roommate Chore Platform")
 
-# CORS middleware
+from fastapi.middleware.cors import CORSMiddleware
+
+origins = [
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://localhost:3000",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:3000",
-    ],  # Vite default port is 5173
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

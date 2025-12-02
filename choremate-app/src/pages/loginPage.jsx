@@ -7,7 +7,7 @@ import { Card, CardContent } from "../components/card";
 import { authAPI } from "../utils/api";
 
 // Main LoginPage Component
-export default function LoginPage({ onLogin = () => { } }) {
+export default function LoginPage({ onLogin = () => { }, onSignup = () => { } }) {
     const [isSignup, setIsSignup] = useState(false);
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
@@ -15,7 +15,7 @@ export default function LoginPage({ onLogin = () => { } }) {
     const [hoveredCard, setHoveredCard] = useState(null);
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
-    
+
     // Field-level validation errors
     const [fieldErrors, setFieldErrors] = useState({
         name: "",
@@ -112,7 +112,7 @@ export default function LoginPage({ onLogin = () => { } }) {
 
     const handleSubmit = async () => {
         setError("");
-        
+
         // Validate all fields before submission
         const emailError = validateEmail(email);
         const passwordError = validatePassword(password);
@@ -137,12 +137,14 @@ export default function LoginPage({ onLogin = () => { } }) {
                 await authAPI.signup(name, email, password);
                 // After signup, automatically log in
                 await authAPI.login(email, password);
+                onSignup(isSignup);
             } else {
                 await authAPI.login(email, password);
+                onLogin(isSignup);
             }
-            
+
             // On successful auth, call the onLogin callback
-            onLogin(isSignup);
+
         } catch (err) {
             setError(err.message || "Authentication failed. Please try again.");
         } finally {
@@ -463,8 +465,8 @@ export default function LoginPage({ onLogin = () => { } }) {
 
                             <Button
                                 onClick={handleSubmit}
-                                style={{ 
-                                    width: "100%", 
+                                style={{
+                                    width: "100%",
                                     marginTop: "8px",
                                     opacity: isFormValid() ? 1 : 0.6,
                                     cursor: isFormValid() ? "pointer" : "not-allowed"
