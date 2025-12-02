@@ -38,6 +38,7 @@ export default function GeneratedSchedulePage({
   const [newChore, setNewChore] = useState({
     name: "",
     description: "",
+    notes: "",
     difficulty_level: 1,
     duration: 30,
     chore_frequency: "Weekly",
@@ -46,6 +47,7 @@ export default function GeneratedSchedulePage({
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // Remove totalChoresCreated state - we'll use chores.length instead
 
   // Load AI‑generated chores for the current user when page mounts
   useEffect(() => {
@@ -53,15 +55,18 @@ export default function GeneratedSchedulePage({
       setLoading(true);
       setError("");
       try {
-        const [user, result] = await Promise.all([
-          userAPI.getCurrentUser(),
-          choresAPI.generateHouseChores(),
-        ]);
+        const result = await choresAPI.generateHouseChores();
 
-        const byUser = result.chores_by_user || {};
-        const userEntry = byUser[user.id];
+        if (result.status !== "success") {
+          setError(result.message || "Failed to generate chores");
+          setChores([]);
+          return;
+        }
 
-        if (!userEntry || !Array.isArray(userEntry.chores)) {
+        // New API format: result.chores is a flat array, result.total_chores_created is the count
+        const allChores = result.chores || [];
+
+        if (!Array.isArray(allChores) || allChores.length === 0) {
           setError(
             "No chores were generated yet. Try again later or adjust your preferences."
           );
@@ -69,17 +74,17 @@ export default function GeneratedSchedulePage({
           return;
         }
 
-        const mapped = userEntry.chores.map((chore, index) => ({
+        // Map the chores to the format expected by the UI
+        const mapped = allChores.map((chore, index) => ({
           id: index + 1,
-          name: chore.name,
-          description: chore.description,
-          difficulty_level: chore.difficulty_level,
-          duration: chore.duration,
-          chore_frequency: chore.chore_frequency,
-          chore_priority: chore.chore_priority,
-          icon: chore.icon || getIconForChore(chore.name), // <‑ use backend icon if present
-          day_of_week: chore.day_of_week,
-          reason: chore.reason,
+          name: chore.name || "",
+          description: chore.description || "",
+          difficulty_level: chore.difficulty_level || 1,
+          duration: chore.duration || 30,
+          chore_frequency: chore.chore_frequency || "Weekly",
+          chore_priority: chore.chore_priority || 2,
+          icon: chore.icon || getIconForChore(chore.name), // Use backend icon if present
+          notes: chore.notes || "", // Use 'notes' field instead of 'reason'
         }));
 
         setChores(mapped);
@@ -162,15 +167,63 @@ export default function GeneratedSchedulePage({
           minHeight: "100vh",
           background: "linear-gradient(to bottom right, #faf5ff, #f3e8ff)",
           display: "flex",
+          flexDirection: "column",
           alignItems: "center",
           justifyContent: "center",
           padding: "16px",
+          gap: "24px",
         }}
       >
-        <p style={{ color: "#6b7280", fontSize: "16px" }}>
-          Generating your household schedule based on everyone&apos;s
+        <div
+          style={{
+            width: "64px",
+            height: "64px",
+            borderRadius: "50%",
+            background: "linear-gradient(45deg, #4c1d95, #7c3aed, #e9d5ff, #f3e8ff, #7c3aed, #4c1d95)",
+            backgroundSize: "300% 300%",
+            animation: "rotate 4s linear infinite",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            boxShadow: "3px 3px 10px 1px rgba(76, 29, 149, 0.5)",
+          }}
+        >
+          <Sparkles 
+            style={{ 
+              width: "32px", 
+              height: "32px", 
+              color: "white",
+              animation: "pulse 1.5s ease-in-out infinite"
+            }} 
+          />
+        </div>
+        <p style={{ color: "#6b7280", fontSize: "16px", textAlign: "center" }}>
+          Generating your household schedule based on everyone's
           preferences...
         </p>
+        <style>{`
+          @keyframes rotate {
+            0% {
+              background-position: 0% 50%;
+            }
+            50% {
+              background-position: 100% 50%;
+            }
+            100% {
+              background-position: 0% 50%;
+            }
+          }
+          @keyframes pulse {
+            0%, 100% {
+              opacity: 1;
+              transform: scale(1);
+            }
+            50% {
+              opacity: 0.7;
+              transform: scale(0.95);
+            }
+          }
+        `}</style>
       </div>
     );
   }
@@ -267,7 +320,7 @@ export default function GeneratedSchedulePage({
                       marginBottom: "4px",
                     }}
                   >
-                    Weekly Commitment
+                    Total Weekly Commitment
                   </p>
                   <p
                     style={{
@@ -306,10 +359,10 @@ export default function GeneratedSchedulePage({
                     style={{
                       color: "#6b7280",
                       fontSize: "12px",
-                      marginBottom: "4px",
+                      marginBottom: "2px",
                     }}
                   >
-                    Tasks Assigned
+                    Total Chores Created
                   </p>
                   <p
                     style={{
@@ -319,48 +372,6 @@ export default function GeneratedSchedulePage({
                     }}
                   >
                     {chores.length}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card style={{ borderColor: "#e9d5ff" }}>
-            <CardContent style={{ padding: "16px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                <div
-                  style={{
-                    width: "48px",
-                    height: "48px",
-                    backgroundColor: "#dcfce7",
-                    borderRadius: "50%",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <CheckCircle
-                    style={{ width: "24px", height: "24px", color: "#16a34a" }}
-                  />
-                </div>
-                <div>
-                  <p
-                    style={{
-                      color: "#6b7280",
-                      fontSize: "12px",
-                      marginBottom: "4px",
-                    }}
-                  >
-                    Fairness Score
-                  </p>
-                  <p
-                    style={{
-                      color: "#111827",
-                      fontSize: "16px",
-                      fontWeight: "600",
-                    }}
-                  >
-                    Balanced ✨
                   </p>
                 </div>
               </div>
@@ -416,8 +427,9 @@ export default function GeneratedSchedulePage({
               <div
                 style={{
                   padding: "16px",
-                  backgroundColor: "#f3e8ff",
+                  backgroundColor: "#f9fafb",
                   borderRadius: "8px",
+                  border: "1px solid #e5e7eb",
                   marginBottom: "16px",
                 }}
               >
@@ -519,7 +531,7 @@ export default function GeneratedSchedulePage({
                         setNewChore({ ...newChore, description: e.target.value })
                       }
                       placeholder="Brief description of the chore"
-                      style={{ minHeight: "60px" }}
+                      style={{ minHeight: "60px", color: "#111827" }}
                     />
                   </div>
 
@@ -632,9 +644,10 @@ export default function GeneratedSchedulePage({
                       }}
                     >
                       <option value="Daily">Daily</option>
+                      <option value="Twice a week">Twice a week</option>
                       <option value="Weekly">Weekly</option>
+                      <option value="Once in two weeks">Once in two weeks</option>
                       <option value="Monthly">Monthly</option>
-                      <option value="One-time">One-time</option>
                     </select>
                   </div>
 
@@ -736,7 +749,7 @@ export default function GeneratedSchedulePage({
                           onChange={(e) =>
                             handleChange(chore.id, "description", e.target.value)
                           }
-                          style={{ minHeight: "60px" }}
+                          style={{ minHeight: "60px", color: "#111827" }}
                         />
                       </div>
 
@@ -855,7 +868,8 @@ export default function GeneratedSchedulePage({
                           <option value="Daily">Daily</option>
                           <option value="Weekly">Weekly</option>
                           <option value="Monthly">Monthly</option>
-                          <option value="One-time">One-time</option>
+                          <option value="Twice a week">Twice a week</option>
+                          <option value="Once in two weeks">Once in two weeks</option>
                         </select>
                       </div>
 
@@ -927,26 +941,16 @@ export default function GeneratedSchedulePage({
                               >
                                 {chore.description}
                               </p>
-                              {chore.day_of_week && (
-                                <p
-                                  style={{
-                                    color: "#6b7280",
-                                    fontSize: "12px",
-                                    marginBottom: "4px",
-                                  }}
-                                >
-                                  Day: {chore.day_of_week}
-                                </p>
-                              )}
-                              {chore.reason && (
+                              {chore.notes && (
                                 <p
                                   style={{
                                     color: "#6b7280",
                                     fontSize: "12px",
                                     fontStyle: "italic",
+                                    marginTop: "4px",
                                   }}
                                 >
-                                  Why you? {chore.reason}
+                                  {chore.notes}
                                 </p>
                               )}
                             </div>
@@ -1057,7 +1061,7 @@ export default function GeneratedSchedulePage({
                                 fontWeight: "600",
                               }}
                             >
-                              {priorityLabel(chore.chore_priority)} Priority
+                              {priorityLabel(chore.chore_priority)}
                             </div>
                           </div>
                         </div>
@@ -1088,7 +1092,7 @@ export default function GeneratedSchedulePage({
               fontSize: "16px",
             }}
           >
-            I&apos;d like to adjust
+            I'd like to regenerate
           </Button>
           <Button
             onClick={handleAccept}
@@ -1104,7 +1108,7 @@ export default function GeneratedSchedulePage({
             }}
           >
             <CheckCircle style={{ width: "20px", height: "20px" }} />
-            This looks fair to me
+            This looks good to me
           </Button>
         </div>
       </div>

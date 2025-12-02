@@ -9,7 +9,7 @@ const Input = ({ type, value, onChange, placeholder, id, style, ...props }) => {
         width: "100%",
         borderRadius: "8px",
         border: isFocused ? "2px solid #7c3aed" : "1px solid #d1d5db",
-        backgroundColor: isFocused ? "white" : "#f9fafb",
+        backgroundColor: "white",
         padding: "12px 16px",
         fontSize: "14px",
         color: "#111827",

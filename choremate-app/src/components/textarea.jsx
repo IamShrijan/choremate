@@ -16,6 +16,7 @@ export function Textarea({ style, ...props }) {
                 transition: "border-color 0.2s, box-shadow 0.2s",
                 outline: "none",
                 fontFamily: "inherit",
+                boxSizing: "border-box",
                 ...style,
             }}
             onFocus={(e) => {

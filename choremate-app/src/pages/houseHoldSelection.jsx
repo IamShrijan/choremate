@@ -131,11 +131,10 @@ export default function HouseholdSelection({ onCreateHousehold = () => { }, onJo
                                     }}
                                     placeholder="Enter 6-character code"
                                     style={{ 
-                                        textTransform: "uppercase", 
-                                        letterSpacing: "2px",
+                                        textTransform: "none", 
                                         textAlign: "center",
-                                        fontSize: "18px",
-                                        fontWeight: "600"
+                                        fontSize: "16px",
+                                        fontWeight: "400"
                                     }}
                                     maxLength={6}
                                     disabled={isLoading}

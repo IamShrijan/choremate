@@ -382,16 +382,6 @@ export default function CreateHousehold({ onComplete = () => { }, onBack = () =>
                                         <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: loading ? "not-allowed" : "pointer" }}>
                                             <input
                                                 type="checkbox"
-                                                checked={hasLivingSpace}
-                                                onChange={(e) => setHasLivingSpace(e.target.checked)}
-                                                disabled={loading}
-                                                style={{ width: "16px", height: "16px", accentColor: "#7c3aed" }}
-                                            />
-                                            <span style={{ fontSize: "14px", color: "#374151" }}>Living Space</span>
-                                        </label>
-                                        <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: loading ? "not-allowed" : "pointer" }}>
-                                            <input
-                                                type="checkbox"
                                                 checked={hasPatio}
                                                 onChange={(e) => setHasPatio(e.target.checked)}
                                                 disabled={loading}
