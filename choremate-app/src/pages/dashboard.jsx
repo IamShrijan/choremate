@@ -13,6 +13,10 @@ import {
     Plus,
 } from "lucide-react";
 import { userAPI } from "../utils/api";
+import ChoreDetailModal from "../components/ChoreDetailModal";
+import AddChoreModal from "../components/AddChoreModal";
+import MyChoresPage from "./MyChoresPage";
+import RoommatesPage from "./RoommatesPage";
 
 export default function Dashboard() {
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -20,6 +24,8 @@ export default function Dashboard() {
     const [currentPage, setCurrentPage] = useState("dashboard");
     const [showAddChore, setShowAddChore] = useState(false);
     const [user, setUser] = useState({ name: "Loading..." });
+    const [selectedChore, setSelectedChore] = useState(null);
+    const [completedChores, setCompletedChores] = useState([]);
 
     React.useEffect(() => {
         const fetchUser = async () => {
@@ -44,10 +50,8 @@ export default function Dashboard() {
 
     const navigationItems = [
         { name: "Dashboard", icon: Home, active: currentPage === "dashboard", page: "dashboard" },
-        { name: "My Chores", icon: ListTodo, active: currentPage === "my-chores", page: "my-chores" },
+        { name: "My Chores", icon: ListTodo, active: currentPage === "my-i", page: "my-chores" },
         { name: "Household Chores", icon: Users, active: false, page: null },
-        { name: "Schedule", icon: Calendar, active: false, page: null },
-        { name: "Leaderboard", icon: Trophy, active: false, page: null },
         { name: "Roommates", icon: Users, active: currentPage === "roommates", page: "roommates" },
         { name: "AI Chatbot", icon: Trophy, active: currentPage === "ai-chatbot", page: "ai-chatbot" },
     ];
@@ -75,29 +79,49 @@ export default function Dashboard() {
     ];
 
     // TODO: Fetch my chores from API
-    const myChores = [
+    const [allChores, setAllChores] = useState([
         {
             id: 1,
             name: "Take Out Trash",
-            dueDate: "Today, 8:00 PM",
+            dueDate: "2025``-12-02T20:00:00",
             effort: 5,
             priority: "high",
+            assignedTo: user.name || "John Doe",
+            frequency: "Daily",
+            notes: "Make sure to separate recycling from regular trash",
+            category: "Kitchen",
         },
         {
             id: 2,
             name: "Clean Bathroom",
-            dueDate: "Tomorrow, 10:00 AM",
+            dueDate: "2025-12-03T10:00:00",
             effort: 15,
             priority: "medium",
+            assignedTo: user.name || "John Doe",
+            frequency: "Weekly",
+            notes: "Don't forget to clean the mirror and restock toilet paper",
+            category: "Bathroom",
         },
         {
             id: 3,
             name: "Vacuum Living Room",
-            dueDate: "Dec 25, 2:00 PM",
+            dueDate: "2025-12-25T14:00:00",
             effort: 10,
             priority: "low",
+            assignedTo: user.name || "John Doe",
+            frequency: "Bi-weekly",
+            notes: "Move furniture to get under the couch",
+            category: "Living Room",
         },
-    ];
+    ]);
+
+    // Filter out completed chores
+    const myChores = allChores.filter(chore => !completedChores.includes(chore.id));
+
+    // Handler for adding new chore
+    const handleAddChore = (newChore) => {
+        setAllChores([...allChores, newChore]);
+    };
 
     return (
         <div style={{
@@ -345,7 +369,11 @@ export default function Dashboard() {
                                     gap: "16px"
                                 }}>
                                     {myChores.map((chore) => (
-                                        <ChoreCard key={chore.id} {...chore} />
+                                        <ChoreCard
+                                            key={chore.id}
+                                            {...chore}
+                                            onClick={() => setSelectedChore(chore)}
+                                        />
                                     ))}
                                 </div>
                             </div>
@@ -396,7 +424,15 @@ export default function Dashboard() {
                             </div>
                         </div>
                     ) : currentPage === "my-chores" ? (
-                        <MyChoresPage onBack={() => setCurrentPage("dashboard")} />
+                        <MyChoresPage
+                            onBack={() => setCurrentPage("dashboard")}
+                            allChores={allChores}
+                            onAddChore={handleAddChore}
+                            onCompleteChore={(choreId) => {
+                                setCompletedChores([...completedChores, choreId]);
+                            }}
+                            completedChores={completedChores}
+                        />
                     ) : currentPage === "roommates" ? (
                         <RoommatesPage onBack={() => setCurrentPage("dashboard")} />
                     ) : currentPage === "ai-chatbot" ? (
@@ -407,7 +443,22 @@ export default function Dashboard() {
 
             {/* Add Chore Modal */}
             {showAddChore && (
-                <AddChoreModal onClose={() => setShowAddChore(false)} />
+                <AddChoreModal
+                    onClose={() => setShowAddChore(false)}
+                    onAdd={handleAddChore}
+                />
+            )}
+
+            {/* Chore Detail Modal */}
+            {selectedChore && (
+                <ChoreDetailModal
+                    chore={selectedChore}
+                    onClose={() => setSelectedChore(null)}
+                    onComplete={(choreId) => {
+                        setCompletedChores([...completedChores, choreId]);
+                        setSelectedChore(null);
+                    }}
+                />
             )}
         </div>
     );
@@ -558,15 +609,46 @@ function StatCard({ title, value, subtitle, trend }) {
 }
 
 // Chore Card Component
-function ChoreCard({ name, dueDate, effort, priority }) {
+function ChoreCard({ name, dueDate, effort, priority, onClick }) {
+    const [isHovered, setIsHovered] = useState(false);
     const priorityColors = {
         high: "#ef4444",
         medium: "#f59e0b",
         low: "#10b981"
     };
 
+    const formatDueDate = (dateString) => {
+        const date = new Date(dateString);
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const choreDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+        if (choreDate.getTime() === today.getTime()) {
+            return `Today, ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+        } else if (choreDate.getTime() === tomorrow.getTime()) {
+            return `Tomorrow, ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+        } else {
+            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+        }
+    };
+
     return (
-        <Card>
+        <div
+            onClick={onClick}
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+            style={{
+                borderRadius: "16px",
+                border: "1px solid #e5e7eb",
+                backgroundColor: "white",
+                boxShadow: isHovered ? "0 4px 12px rgba(0, 0, 0, 0.15)" : "0 1px 3px rgba(0, 0, 0, 0.1)",
+                cursor: "pointer",
+                transition: "all 0.2s ease",
+                transform: isHovered ? "translateY(-2px)" : "translateY(0)",
+            }}
+        >
             <div style={{ padding: "20px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: "12px" }}>
                     <h4 style={{ fontSize: "16px", fontWeight: "600", color: "#111827" }}>{name}</h4>
@@ -579,27 +661,13 @@ function ChoreCard({ name, dueDate, effort, priority }) {
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
                     <Clock style={{ width: "14px", height: "14px", color: "#6b7280" }} />
-                    <span style={{ fontSize: "12px", color: "#6b7280" }}>{dueDate}</span>
+                    <span style={{ fontSize: "12px", color: "#6b7280" }}>{formatDueDate(dueDate)}</span>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                     <span style={{ fontSize: "12px", color: "#6b7280" }}>{effort} min effort</span>
                 </div>
-                <button style={{
-                    width: "100%",
-                    marginTop: "16px",
-                    padding: "8px",
-                    backgroundColor: "#7c3aed",
-                    color: "white",
-                    border: "none",
-                    borderRadius: "8px",
-                    cursor: "pointer",
-                    fontSize: "14px",
-                    fontWeight: "600"
-                }}>
-                    Mark Complete
-                </button>
             </div>
-        </Card>
+        </div>
     );
 }
 
@@ -650,47 +718,27 @@ function ChoreTable() {
 }
 
 // Placeholder Pages
-function MyChoresPage({ onBack }) {
-    return (
-        <div>
-            <button onClick={onBack} style={{
-                padding: "8px 16px",
-                marginBottom: "16px",
-                backgroundColor: "white",
-                color: "#374151",
-                border: "2px solid #e5e7eb",
-                borderRadius: "8px",
-                cursor: "pointer",
-                fontSize: "14px",
-                fontWeight: "600"
-            }}>
-                ← Back
-            </button>
-            <h2 style={{ fontSize: "24px", fontWeight: "bold", color: "#111827" }}>My Chores</h2>
-        </div>
-    );
-}
+// function MyChoresPage({ onBack }) {
+//     return (
+//         <div>
+//             <button onClick={onBack} style={{
+//                 padding: "8px 16px",
+//                 marginBottom: "16px",
+//                 backgroundColor: "white",
+//                 color: "#374151",
+//                 border: "2px solid #e5e7eb",
+//                 borderRadius: "8px",
+//                 cursor: "pointer",
+//                 fontSize: "14px",
+//                 fontWeight: "600"
+//             }}>
+//                 ← Back
+//             </button>
+//             <h2 style={{ fontSize: "24px", fontWeight: "bold", color: "#111827" }}>My Chores</h2>
+//         </div>
+//     );
+// }
 
-function RoommatesPage({ onBack }) {
-    return (
-        <div>
-            <button onClick={onBack} style={{
-                padding: "8px 16px",
-                marginBottom: "16px",
-                backgroundColor: "white",
-                color: "#374151",
-                border: "2px solid #e5e7eb",
-                borderRadius: "8px",
-                cursor: "pointer",
-                fontSize: "14px",
-                fontWeight: "600"
-            }}>
-                ← Back
-            </button>
-            <h2 style={{ fontSize: "24px", fontWeight: "bold", color: "#111827" }}>Roommates</h2>
-        </div>
-    );
-}
 
 function AIChatbotPage({ onBack }) {
     return (
@@ -710,83 +758,5 @@ function AIChatbotPage({ onBack }) {
             </button>
             <h2 style={{ fontSize: "24px", fontWeight: "bold", color: "#111827" }}>AI Chatbot</h2>
         </div>
-    );
-}
-
-// Add Chore Modal
-function AddChoreModal({ onClose }) {
-    return (
-        <>
-            <div
-                style={{
-                    position: "fixed",
-                    inset: 0,
-                    backgroundColor: "rgba(0, 0, 0, 0.5)",
-                    zIndex: 50
-                }}
-                onClick={onClose}
-            />
-            <div style={{
-                position: "fixed",
-                top: "50%",
-                left: "50%",
-                transform: "translate(-50%, -50%)",
-                zIndex: 51,
-                width: "90%",
-                maxWidth: "500px"
-            }}>
-                <Card>
-                    <div style={{ padding: "24px" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-                            <h3 style={{ fontSize: "20px", fontWeight: "600", color: "#111827" }}>Add New Chore</h3>
-                            <button
-                                onClick={onClose}
-                                style={{
-                                    padding: "8px",
-                                    backgroundColor: "transparent",
-                                    border: "none",
-                                    borderRadius: "6px",
-                                    cursor: "pointer",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center"
-                                }}
-                            >
-                                <X style={{ width: "20px", height: "20px" }} />
-                            </button>
-                        </div>
-                        <p style={{ color: "#6b7280", fontSize: "14px" }}>Add chore form would go here...</p>
-                        <div style={{ display: "flex", gap: "8px", marginTop: "20px" }}>
-                            <button style={{
-                                flex: 1,
-                                padding: "12px 24px",
-                                backgroundColor: "#7c3aed",
-                                color: "white",
-                                border: "none",
-                                borderRadius: "8px",
-                                cursor: "pointer",
-                                fontSize: "14px",
-                                fontWeight: "600"
-                            }}>
-                                Add Chore
-                            </button>
-                            <button onClick={onClose} style={{
-                                flex: 1,
-                                padding: "12px 24px",
-                                backgroundColor: "white",
-                                color: "#374151",
-                                border: "2px solid #e5e7eb",
-                                borderRadius: "8px",
-                                cursor: "pointer",
-                                fontSize: "14px",
-                                fontWeight: "600"
-                            }}>
-                                Cancel
-                            </button>
-                        </div>
-                    </div>
-                </Card>
-            </div>
-        </>
     );
 }
