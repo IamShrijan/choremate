@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import LoginPage from './pages/loginPage.jsx';
 import HouseholdSelection from './pages/houseHoldSelection.jsx';
 import CreateHousehold from './pages/createHouseHold.jsx';
 import WaitingForRoomatesPage from './pages/waitingForRoomatePage.jsx';
 import SurveyFlow from './pages/surveyFlow.jsx';
 import GeneratedSchedulePage from './pages/generatedSchedulePage.jsx';
+import Dashboard from './pages/dashboard.jsx';
 import { authAPI, userAPI } from './utils/api';
 import './App.css';
 
@@ -50,37 +51,13 @@ function App() {
   const handleLogin = async (isNewUser) => {
     console.log('User logged in:', isNewUser ? 'New User' : 'Existing User');
     setIsLoggedIn(true);
-    
-    // Check if user has a household
-    setIsCheckingHousehold(true);
-    try {
-      const userInfo = await userAPI.getCurrentUser();
-      if (userInfo.house_id) {
-        // User has a household, skip household creation and go to main dashboard
-        setCurrentView('main');
-      } else {
-        // User doesn't have a household, show household selection
-        setCurrentView('household-selection');
-      }
-    } catch (error) {
-      console.error('Error checking user household:', error);
-      // If there's an error, default to household selection
-      setCurrentView('household-selection');
-    } finally {
-      setIsCheckingHousehold(false);
-    }
+    setCurrentView('dashboard');
   };
 
-  const handleLogout = async () => {
-    try {
-      await authAPI.logout();
-    } catch (error) {
-      console.error('Logout error:', error);
-      // Still clear local state even if API call fails
-    } finally {
-      setIsLoggedIn(false);
-      setCurrentView('household-selection');
-    }
+  const handleSignup = async (isNewUser) => {
+    console.log('User signed up:', isNewUser ? 'New User' : 'Existing User');
+    setIsLoggedIn(true);
+    setCurrentView('household-selection');
   };
 
   const handleCreateHousehold = () => {
@@ -114,7 +91,13 @@ function App() {
 
   const handleCompleteGeneratedSchedule = (chores) => {
     console.log(chores);
-    setCurrentView('main');
+    setCurrentView('dashboard');
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('auth_token');
+    setIsLoggedIn(false);
+    setCurrentView('household-selection');
   };
 
   // Show loading state while checking household
@@ -145,7 +128,7 @@ function App() {
   }
 
   if (!isLoggedIn) {
-    return <LoginPage onLogin={handleLogin} />;
+    return <LoginPage onLogin={handleLogin} onSignup={handleSignup} />;
   }
 
   if (currentView === 'household-selection') {
@@ -189,6 +172,14 @@ function App() {
       <GeneratedSchedulePage
         onAccept={handleCompleteGeneratedSchedule}
         onAdjust={handleBackToSelection}
+      />
+    );
+  }
+
+  if (currentView === 'dashboard') {
+    return (
+      <Dashboard
+        onBack={handleBackToSelection}
       />
     );
   }
