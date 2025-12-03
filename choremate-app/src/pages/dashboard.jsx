@@ -65,7 +65,7 @@ export default function Dashboard() {
     React.useEffect(() => {
         const fetchUser = async () => {
             try {
-                const userData = await userAPI.getUserProfile();
+                const userData = await userAPI.getProfile();
                 setUser(userData);
             } catch (error) {
                 console.error("Failed to fetch user:", error);
