@@ -206,5 +206,15 @@ export const statsAPI = {
   },
 };
 
+// Chatbot API functions
+export const chatbotAPI = {
+  chat: async (data) => {
+    return apiRequest('/ai-chatbot/chat', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+};
+
 // Export the base request function for other API calls
 export default apiRequest;

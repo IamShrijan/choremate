@@ -332,27 +332,6 @@ export default function RoommatesPage({ onBack }) {
                         Leaderboard
                     </h3>
 
-                    {/* Description of how leaderboard is calculated */}
-                    <div style={{
-                        padding: "16px",
-                        backgroundColor: "#f9fafb",
-                        borderRadius: "8px",
-                        border: "1px solid #e5e7eb",
-                        marginBottom: "24px",
-                    }}>
-                        <p style={{
-                            fontSize: "13px",
-                            color: "#4b5563",
-                            lineHeight: "1.5",
-                            margin: 0,
-                        }}>
-                            <strong style={{ color: "#111827" }}>How Leaderboard is Calculated:</strong>{" "}
-                            Each person's rating is calculated as (completed tasks ÷ total tasks assigned this week) × 5, 
-                            giving a score out of 5 stars. The leaderboard is ordered by highest rating first. 
-                            This shows who has completed the highest percentage of their assigned chores this week (Sunday to Saturday).
-                        </p>
-                    </div>
-
                     <div style={{
                         display: "flex",
                         flexDirection: "column",
@@ -474,6 +453,26 @@ export default function RoommatesPage({ onBack }) {
                                 </div>
                             </div>
                         ))}
+                    {/* Description of how leaderboard is calculated */}
+                    <div style={{
+                        padding: "16px",
+                        backgroundColor: "#f9fafb",
+                        borderRadius: "8px",
+                        border: "1px solid #e5e7eb",
+                        marginBottom: "24px",
+                    }}>
+                        <p style={{
+                            fontSize: "13px",
+                            color: "#4b5563",
+                            lineHeight: "1.5",
+                            margin: 0,
+                        }}>
+                            <strong style={{ color: "#111827" }}>How Leaderboard is Calculated:</strong>{" "}
+                            Each person's rating is calculated as (completed tasks ÷ total tasks assigned this week) × 5, 
+                            giving a score out of 5 stars. The leaderboard is ordered by highest rating first. 
+                            This shows who has completed the highest percentage of their assigned chores this week (Sunday to Saturday).
+                        </p>
+                    </div>
                     </div>
                 </div>
             </div>

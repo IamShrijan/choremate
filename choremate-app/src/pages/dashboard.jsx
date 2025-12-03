@@ -17,6 +17,7 @@ import ChoreDetailModal from "../components/ChoreDetailModal";
 import AddChoreModal from "../components/AddChoreModal";
 import MyChoresPage from "./MyChoresPage";
 import RoommatesPage from "./RoommatesPage";
+import AIChatbotPage from "./AIChatbotPage";
 
 export default function Dashboard() {
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -853,25 +854,3 @@ function ChoreTable() {
 //         </div>
 //     );
 // }
-
-
-function AIChatbotPage({ onBack }) {
-    return (
-        <div>
-            <button onClick={onBack} style={{
-                padding: "8px 16px",
-                marginBottom: "16px",
-                backgroundColor: "white",
-                color: "#374151",
-                border: "2px solid #e5e7eb",
-                borderRadius: "8px",
-                cursor: "pointer",
-                fontSize: "14px",
-                fontWeight: "600"
-            }}>
-                ← Back
-            </button>
-            <h2 style={{ fontSize: "24px", fontWeight: "bold", color: "#111827" }}>AI Chatbot</h2>
-        </div>
-    );
-}
