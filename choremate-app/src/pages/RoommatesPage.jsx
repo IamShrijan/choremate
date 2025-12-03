@@ -1,58 +1,77 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Users, Trophy, Star, ArrowLeft } from "lucide-react";
+import { statsAPI, userAPI, houseAPI } from "../utils/api";
 
 export default function RoommatesPage({ onBack }) {
-    // Mock data for fairness chart
-    const fairnessData = [
-        { name: "You", choresCompleted: 10, color: "#8b5cf6" },
-        { name: "John Doe", choresCompleted: 8, color: "#7c3aed" },
-        { name: "Jane Doe", choresCompleted: 12, color: "#6d28d9" },
-        { name: "Richard Roe", choresCompleted: 10, color: "#5b21b6" },
-    ];
+    const [fairnessData, setFairnessData] = useState([]);
+    const [roommates, setRoommates] = useState([]);  // Now will hold leaderboard data
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+    const [currentUser, setCurrentUser] = useState(null);
+    const [totalHouseholdMinutes, setTotalHouseholdMinutes] = useState(0);
 
-    // Mock roommate data with leaderboard info
-    const roommates = [
-        {
-            id: 1,
-            name: "Jane Doe",
-            email: "jane@email.com",
-            avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop",
-            choresCompleted: 12,
-            rating: 5,
-            rank: 1,
-        },
-        {
-            id: 2,
-            name: "Richard Roe",
-            email: "richard@email.com",
-            avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop",
-            choresCompleted: 10,
-            rating: 4,
-            rank: 2,
-        },
-        {
-            id: 3,
-            name: "You",
-            email: "john@email.com",
-            avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop",
-            choresCompleted: 10,
-            rating: 3,
-            rank: 3,
-        },
-        {
-            id: 4,
-            name: "John Doe",
-            email: "johndoe@email.com",
-            avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop",
-            choresCompleted: 8,
-            rating: 3,
-            rank: 4,
-        },
-    ];
+    // Fetch fairness report and leaderboard data
+    useEffect(() => {
+        const fetchData = async () => {
+            try {
+                setLoading(true);
+                
+                // Get current user info
+                const userInfo = await userAPI.getMe();
+                setCurrentUser(userInfo);
+                
+                // Fetch fairness report
+                const fairnessReport = await statsAPI.getFairnessReport();
+                
+                if (fairnessReport.status === "success") {
+                    setTotalHouseholdMinutes(fairnessReport.total_household_minutes || 0);
+                    
+                    const transformed = fairnessReport.user_contributions.map((user) => ({
+                        user_id: user.user_id,
+                        name: user.user_name,
+                        totalPlannedMinutes: user.total_planned_minutes || 0,
+                        choreCount: user.chore_count || 0,
+                    }));
+                    
+                    transformed.sort((a, b) => b.totalPlannedMinutes - a.totalPlannedMinutes);
+                    setFairnessData(transformed);
+                }
 
-    const maxChores = Math.max(...fairnessData.map(d => d.choresCompleted));
+                // Fetch leaderboard
+                const leaderboardResponse = await statsAPI.getLeaderboard();
+                
+                if (leaderboardResponse.status === "success") {
+                    setRoommates(leaderboardResponse.leaderboard.map((entry) => ({
+                        id: entry.user_id,
+                        name: entry.user_name,
+                        email: entry.email || "",
+                        totalTasks: entry.total_tasks,
+                        completedTasks: entry.completed_tasks,
+                        rating: entry.rating,
+                        rank: entry.rank,
+                    })));
+                }
+            } catch (err) {
+                console.error("Failed to fetch data:", err);
+                setError(err.message || "Failed to load data");
+            } finally {
+                setLoading(false);
+            }
+        };
 
+        fetchData();
+        
+        // Poll every 10 seconds for live updates
+        const interval = setInterval(fetchData, 10000);
+        return () => clearInterval(interval);
+    }, []);
+
+    // Use total household minutes as max scale (ensure minimum of 1 to prevent division by zero)
+    const maxScale = Math.max(totalHouseholdMinutes, 1);
+
+    // Update renderStars to use the actual rating value
     const renderStars = (rating) => {
+        const roundedRating = Math.round(rating);  // Round to nearest integer for star display
         return (
             <div style={{ display: "flex", gap: "4px" }}>
                 {[1, 2, 3, 4, 5].map((star) => (
@@ -61,8 +80,8 @@ export default function RoommatesPage({ onBack }) {
                         style={{
                             width: "20px",
                             height: "20px",
-                            fill: star <= rating ? "#7c3aed" : "#d1d5db",
-                            color: star <= rating ? "#7c3aed" : "#d1d5db",
+                            fill: star <= roundedRating ? "#7c3aed" : "#d1d5db",
+                            color: star <= roundedRating ? "#7c3aed" : "#d1d5db",
                         }}
                     />
                 ))}
@@ -94,6 +113,20 @@ export default function RoommatesPage({ onBack }) {
             </div>
         );
     };
+
+    if (loading) {
+        return (
+            <div style={{
+                height: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "#f9fafb",
+            }}>
+                <p style={{ color: "#6b7280" }}>Loading fairness report...</p>
+            </div>
+        );
+    }
 
     return (
         <div style={{
@@ -143,6 +176,19 @@ export default function RoommatesPage({ onBack }) {
                 overflow: "auto",
                 padding: "32px",
             }}>
+                {error && (
+                    <div style={{
+                        padding: "12px",
+                        backgroundColor: "#fee2e2",
+                        color: "#b91c1c",
+                        borderRadius: "6px",
+                        marginBottom: "20px",
+                        fontSize: "14px"
+                    }}>
+                        {error}
+                    </div>
+                )}
+
                 {/* Fairness Report Section */}
                 <div style={{
                     backgroundColor: "white",
@@ -173,58 +219,100 @@ export default function RoommatesPage({ onBack }) {
                         <div style={{
                             display: "flex",
                             flexDirection: "column",
-                            gap: "16px",
+                            gap: "20px",
                         }}>
-                            {fairnessData.map((person) => (
-                                <div key={person.name}>
-                                    <div style={{
-                                        display: "flex",
-                                        justifyContent: "space-between",
-                                        marginBottom: "8px",
-                                    }}>
-                                        <span style={{
-                                            fontSize: "14px",
-                                            fontWeight: "500",
-                                            color: "#374151",
-                                        }}>
-                                            {person.name}
-                                        </span>
-                                        <span style={{
-                                            fontSize: "14px",
-                                            fontWeight: "600",
-                                            color: "#111827",
-                                        }}>
-                                            {person.choresCompleted} chores
-                                        </span>
-                                    </div>
-                                    <div style={{
-                                        width: "100%",
-                                        height: "32px",
-                                        backgroundColor: "#f3f4f6",
-                                        borderRadius: "8px",
-                                        overflow: "hidden",
-                                    }}>
+                            {fairnessData.map((person) => {
+                                // Calculate bar width as percentage of total household minutes
+                                const barPercent = (person.totalPlannedMinutes / maxScale) * 100;
+                                // Calculate percentage of total household effort
+                                const effortPercentage = maxScale > 0 
+                                    ? ((person.totalPlannedMinutes / maxScale) * 100).toFixed(1)
+                                    : "0.0";
+                                
+                                return (
+                                    <div key={person.user_id}>
                                         <div style={{
-                                            width: `${(person.choresCompleted / maxChores) * 100}%`,
-                                            height: "100%",
-                                            backgroundColor: person.color,
+                                            display: "flex",
+                                            justifyContent: "space-between",
+                                            alignItems: "center",
+                                            marginBottom: "8px",
+                                        }}>
+                                            <span style={{
+                                                fontSize: "14px",
+                                                fontWeight: "500",
+                                                color: "#374151",
+                                            }}>
+                                                {person.name === currentUser?.name ? "You" : person.name}
+                                            </span>
+                                        </div>
+                                        <div style={{
+                                            position: "relative",
+                                            width: "100%",
+                                            height: "40px",
+                                            backgroundColor: "#f3f4f6",
                                             borderRadius: "8px",
-                                            transition: "width 0.3s ease",
-                                        }} />
+                                            overflow: "visible",
+                                        }}>
+                                            {/* Purple bar showing assigned effort for this person */}
+                                            <div style={{
+                                                width: `${barPercent}%`,
+                                                height: "100%",
+                                                backgroundColor: "#7c3aed",
+                                                borderRadius: "8px",
+                                                transition: "width 0.3s ease",
+                                                display: "flex",
+                                                alignItems: "center",
+                                                justifyContent: "flex-end",
+                                                paddingRight: "8px",
+                                                minWidth: "60px",  // Minimum width to show percentage
+                                            }}>
+                                                <span style={{
+                                                    fontSize: "12px",
+                                                    fontWeight: "600",
+                                                    color: "white",
+                                                }}>
+                                                    {effortPercentage}%
+                                                </span>
+                                            </div>
+                                            
+                                            {/* Chore count label at the end of the bar */}
+                                            <div style={{
+                                                position: "absolute",
+                                                left: `${barPercent}%`,
+                                                marginLeft: "12px",
+                                                height: "100%",
+                                                display: "flex",
+                                                alignItems: "center",
+                                                whiteSpace: "nowrap",
+                                            }}>
+                                            </div>
+                                        </div>
                                     </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     </div>
 
-                    <p style={{
-                        fontSize: "14px",
-                        color: "#6b7280",
-                        textAlign: "center",
-                        marginTop: "16px",
+                    {/* Description of how fairness is calculated */}
+                    <div style={{
+                        padding: "16px",
+                        backgroundColor: "#f9fafb",
+                        borderRadius: "8px",
+                        border: "1px solid #e5e7eb",
+                        marginBottom: "16px",
                     }}>
-                        Showing chores completed this week across all household members
-                    </p>
+                        <p style={{
+                            fontSize: "13px",
+                            color: "#4b5563",
+                            lineHeight: "1.5",
+                            margin: 0,
+                        }}>
+                            <strong style={{ color: "#111827" }}>How Fairness is Calculated:</strong>{" "}
+                            The percentage represents each person's share of the total monthly effort based on chore durations. 
+                            The purple bar shows the assigned effort in minutes relative to the household total. 
+                            A balanced distribution means similar percentages across all members.
+                        </p>
+                    </div>
                 </div>
 
                 {/* Leaderboard Section */}
@@ -243,6 +331,27 @@ export default function RoommatesPage({ onBack }) {
                     }}>
                         Leaderboard
                     </h3>
+
+                    {/* Description of how leaderboard is calculated */}
+                    <div style={{
+                        padding: "16px",
+                        backgroundColor: "#f9fafb",
+                        borderRadius: "8px",
+                        border: "1px solid #e5e7eb",
+                        marginBottom: "24px",
+                    }}>
+                        <p style={{
+                            fontSize: "13px",
+                            color: "#4b5563",
+                            lineHeight: "1.5",
+                            margin: 0,
+                        }}>
+                            <strong style={{ color: "#111827" }}>How Leaderboard is Calculated:</strong>{" "}
+                            Each person's rating is calculated as (completed tasks ÷ total tasks assigned this week) × 5, 
+                            giving a score out of 5 stars. The leaderboard is ordered by highest rating first. 
+                            This shows who has completed the highest percentage of their assigned chores this week (Sunday to Saturday).
+                        </p>
+                    </div>
 
                     <div style={{
                         display: "flex",
@@ -273,24 +382,21 @@ export default function RoommatesPage({ onBack }) {
                                     {getRankBadge(roommate.rank)}
                                 </div>
 
-                                {/* Avatar */}
+                                {/* Avatar Placeholder */}
                                 <div style={{
                                     width: "56px",
                                     height: "56px",
                                     borderRadius: "50%",
-                                    overflow: "hidden",
                                     backgroundColor: "#e5e7eb",
                                     flexShrink: 0,
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    fontSize: "24px",
+                                    fontWeight: "600",
+                                    color: "#6b7280",
                                 }}>
-                                    <img
-                                        src={roommate.avatar}
-                                        alt={roommate.name}
-                                        style={{
-                                            width: "100%",
-                                            height: "100%",
-                                            objectFit: "cover",
-                                        }}
-                                    />
+                                    {roommate.name.charAt(0).toUpperCase()}
                                 </div>
 
                                 {/* Info */}
@@ -311,7 +417,7 @@ export default function RoommatesPage({ onBack }) {
                                         }}>
                                             {roommate.name}
                                         </p>
-                                        {roommate.name === "You" && (
+                                        {roommate.name === currentUser?.name && (
                                             <span style={{
                                                 padding: "2px 8px",
                                                 backgroundColor: "#f3e8ff",
@@ -324,15 +430,17 @@ export default function RoommatesPage({ onBack }) {
                                             </span>
                                         )}
                                     </div>
-                                    <p style={{
-                                        fontSize: "14px",
-                                        color: "#6b7280",
-                                        overflow: "hidden",
-                                        textOverflow: "ellipsis",
-                                        whiteSpace: "nowrap",
-                                    }}>
-                                        {roommate.email}
-                                    </p>
+                                    {roommate.email && (
+                                        <p style={{
+                                            fontSize: "14px",
+                                            color: "#6b7280",
+                                            overflow: "hidden",
+                                            textOverflow: "ellipsis",
+                                            whiteSpace: "nowrap",
+                                        }}>
+                                            {roommate.email}
+                                        </p>
+                                    )}
                                 </div>
 
                                 {/* Stats */}
@@ -343,43 +451,30 @@ export default function RoommatesPage({ onBack }) {
                                     gap: "4px",
                                     flexShrink: 0,
                                 }}>
+                                    <span style={{
+                                        fontSize: "14px",
+                                        color: "#6b7280",
+                                    }}>
+                                        {roommate.completedTasks}/{roommate.totalTasks} tasks
+                                    </span>
                                     <div style={{
                                         display: "flex",
                                         alignItems: "center",
                                         gap: "8px",
                                     }}>
+                                        {renderStars(roommate.rating)}
                                         <span style={{
-                                            fontSize: "14px",
+                                            fontSize: "12px",
                                             color: "#6b7280",
+                                            fontWeight: "500",
                                         }}>
-                                            {roommate.choresCompleted} chores
+                                            {roommate.rating.toFixed(1)}/5
                                         </span>
                                     </div>
-                                    {renderStars(roommate.rating)}
                                 </div>
                             </div>
                         ))}
                     </div>
-                </div>
-
-                {/* Action Button */}
-                <div style={{ marginTop: "24px" }}>
-                    <button style={{
-                        padding: "12px 24px",
-                        backgroundColor: "#7c3aed",
-                        color: "white",
-                        border: "none",
-                        borderRadius: "8px",
-                        cursor: "pointer",
-                        fontSize: "14px",
-                        fontWeight: "600",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                    }}>
-                        <Users style={{ width: "16px", height: "16px" }} />
-                        Invite New Roommate
-                    </button>
                 </div>
             </div>
         </div>
