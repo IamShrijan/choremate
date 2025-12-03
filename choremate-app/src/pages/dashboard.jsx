@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
     Home,
     ListTodo,
@@ -12,7 +12,7 @@ import {
     X,
     Plus,
 } from "lucide-react";
-import { userAPI } from "../utils/api";
+import { userAPI, choresAPI } from "../utils/api";
 import ChoreDetailModal from "../components/ChoreDetailModal";
 import AddChoreModal from "../components/AddChoreModal";
 import MyChoresPage from "./MyChoresPage";
@@ -26,6 +26,41 @@ export default function Dashboard() {
     const [user, setUser] = useState({ name: "Loading..." });
     const [selectedChore, setSelectedChore] = useState(null);
     const [completedChores, setCompletedChores] = useState([]);
+    const [allChores, setAllChores] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+
+    // Fetch chores from API on component mount
+    useEffect(() => {
+        const fetchChores = async () => {
+            try {
+                setLoading(true);
+                setError(null);
+                const response = await choresAPI.getChores();
+
+                // Transform API response to match frontend format
+                const transformedChores = response.map(ticket => ({
+                    id: ticket.ticket_id,
+                    name: ticket.chore_name,
+                    dueDate: ticket.due_date,
+                    effort: ticket.duration,
+                    priority: ticket.difficulty_level === 1 ? "low" : ticket.difficulty_level === 2 ? "medium" : "high",
+                    assignedTo: ticket.assigned_user_name,
+                    frequency: "Daily", // Default value, update if API provides this
+                    notes: ticket.notes || "",
+                }));
+
+                setAllChores(transformedChores);
+            } catch (err) {
+                console.error("Error fetching chores:", err);
+                setError("Failed to load chores. Please try again.");
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchChores();
+    }, []);
 
     React.useEffect(() => {
         const fetchUser = async () => {
@@ -78,49 +113,61 @@ export default function Dashboard() {
         },
     ];
 
-    // TODO: Fetch my chores from API
-    const [allChores, setAllChores] = useState([
-        {
-            id: 1,
-            name: "Take Out Trash",
-            dueDate: "2025``-12-02T20:00:00",
-            effort: 5,
-            priority: "high",
-            assignedTo: user.name || "John Doe",
-            frequency: "Daily",
-            notes: "Make sure to separate recycling from regular trash",
-            category: "Kitchen",
-        },
-        {
-            id: 2,
-            name: "Clean Bathroom",
-            dueDate: "2025-12-03T10:00:00",
-            effort: 15,
-            priority: "medium",
-            assignedTo: user.name || "John Doe",
-            frequency: "Weekly",
-            notes: "Don't forget to clean the mirror and restock toilet paper",
-            category: "Bathroom",
-        },
-        {
-            id: 3,
-            name: "Vacuum Living Room",
-            dueDate: "2025-12-25T14:00:00",
-            effort: 10,
-            priority: "low",
-            assignedTo: user.name || "John Doe",
-            frequency: "Bi-weekly",
-            notes: "Move furniture to get under the couch",
-            category: "Living Room",
-        },
-    ]);
-
     // Filter out completed chores
     const myChores = allChores.filter(chore => !completedChores.includes(chore.id));
+
+    // Filter out completed chores and only show today's chores
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const todaysChores = allChores.filter(chore => {
+        if (completedChores.includes(chore.id)) return false;
+
+        const choreDate = new Date(chore.dueDate);
+        return choreDate >= today && choreDate < tomorrow;
+    });
 
     // Handler for adding new chore
     const handleAddChore = (newChore) => {
         setAllChores([...allChores, newChore]);
+    };
+
+    // Handler for completing a chore - now uses real API
+    const handleCompleteChore = async (choreId) => {
+        try {
+            console.log("Completing chore:", choreId);
+
+            // Call the API to mark ticket as complete
+            await choresAPI.markComplete(choreId);
+
+            // Update local state
+            setCompletedChores([...completedChores, choreId]);
+
+            // Optionally refresh chores from API
+            // const updatedChores = await choresAPI.getChores();
+            // setAllChores(transformChores(updatedChores));
+        } catch (err) {
+            console.error("Error completing chore:", err);
+            alert("Failed to complete chore. Please try again.");
+        }
+    };
+
+    // Placeholder function for editing a chore
+    const handleEditChore = async (choreId, updatedData) => {
+        try {
+            console.log("Editing chore:", choreId, updatedData);
+            // TODO: Add API call to update chore
+            // await choresAPI.updateChore(choreId, updatedData);
+
+            // For now, just update local state
+            setAllChores(allChores.map(chore =>
+                chore.id === choreId ? { ...chore, ...updatedData } : chore
+            ));
+        } catch (err) {
+            console.error("Error editing chore:", err);
+        }
     };
 
     return (
@@ -334,7 +381,7 @@ export default function Dashboard() {
                                 ))}
                             </div>
 
-                            {/* My Chores Section */}
+                            {/* Today's Chores Section */}
                             <div style={{ marginBottom: "32px" }}>
                                 <div style={{
                                     display: "flex",
@@ -346,7 +393,7 @@ export default function Dashboard() {
                                         fontSize: "20px",
                                         fontWeight: "600",
                                         color: "#111827"
-                                    }}>My Chores</h3>
+                                    }}>Today's Chores</h3>
                                     <button
                                         onClick={() => setCurrentPage("my-chores")}
                                         style={{
@@ -364,17 +411,41 @@ export default function Dashboard() {
                                     </button>
                                 </div>
                                 <div style={{
-                                    display: "grid",
-                                    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-                                    gap: "16px"
+                                    display: "flex",
+                                    gap: "16px",
+                                    overflowX: "auto",
+                                    overflowY: "hidden",
+                                    paddingBottom: "8px",
+                                    scrollbarWidth: "thin",
+                                    scrollbarColor: "#cbd5e1 #f1f5f9",
                                 }}>
-                                    {myChores.map((chore) => (
-                                        <ChoreCard
-                                            key={chore.id}
-                                            {...chore}
-                                            onClick={() => setSelectedChore(chore)}
-                                        />
-                                    ))}
+                                    {todaysChores.length > 0 ? (
+                                        todaysChores.map((chore) => (
+                                            <div
+                                                key={chore.id}
+                                                style={{
+                                                    minWidth: "calc(33.333% - 11px)",
+                                                    maxWidth: "calc(33.333% - 11px)",
+                                                    flexShrink: 0,
+                                                }}
+                                            >
+                                                <ChoreCard
+                                                    {...chore}
+                                                    onClick={() => setSelectedChore(chore)}
+                                                />
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <div style={{
+                                            width: "100%",
+                                            padding: "32px",
+                                            textAlign: "center",
+                                            color: "#6b7280",
+                                            fontSize: "14px"
+                                        }}>
+                                            No chores due today! 🎉
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
@@ -432,6 +503,27 @@ export default function Dashboard() {
                                 setCompletedChores([...completedChores, choreId]);
                             }}
                             completedChores={completedChores}
+                            onRefresh={async () => {
+                                // Refetch chores after rescheduling
+                                console.log("MyChoresPage onRefresh called");
+                                try {
+                                    const response = await choresAPI.getChores();
+                                    const transformedChores = response.map(ticket => ({
+                                        id: ticket.ticket_id,
+                                        name: ticket.chore_name,
+                                        dueDate: ticket.due_date,
+                                        effort: ticket.duration,
+                                        priority: ticket.difficulty_level === 1 ? "low" : ticket.difficulty_level === 2 ? "medium" : "high",
+                                        assignedTo: ticket.assigned_user_name,
+                                        frequency: "Daily",
+                                        notes: ticket.notes || "",
+                                    }));
+                                    setAllChores(transformedChores);
+                                    console.log("MyChoresPage state updated");
+                                } catch (err) {
+                                    console.error("Error refreshing chores in MyChoresPage:", err);
+                                }
+                            }}
                         />
                     ) : currentPage === "roommates" ? (
                         <RoommatesPage onBack={() => setCurrentPage("dashboard")} />
@@ -454,9 +546,32 @@ export default function Dashboard() {
                 <ChoreDetailModal
                     chore={selectedChore}
                     onClose={() => setSelectedChore(null)}
-                    onComplete={(choreId) => {
-                        setCompletedChores([...completedChores, choreId]);
-                        setSelectedChore(null);
+                    onComplete={handleCompleteChore}
+                    onRefresh={async () => {
+                        // Refetch chores after rescheduling
+                        console.log("Dashboard onRefresh called");
+                        try {
+                            console.log("Fetching updated chores...");
+                            const response = await choresAPI.getChores();
+                            console.log("Received chores:", response.length);
+
+                            const transformedChores = response.map(ticket => ({
+                                id: ticket.ticket_id,
+                                name: ticket.chore_name,
+                                dueDate: ticket.due_date,
+                                effort: ticket.duration,
+                                priority: ticket.difficulty_level === 1 ? "low" : ticket.difficulty_level === 2 ? "medium" : "high",
+                                assignedTo: ticket.assigned_user_name,
+                                frequency: "Daily",
+                                notes: ticket.notes || "",
+                            }));
+
+                            console.log("Setting updated chores to state");
+                            setAllChores(transformedChores);
+                            console.log("State updated successfully");
+                        } catch (err) {
+                            console.error("Error refreshing chores:", err);
+                        }
                     }}
                 />
             )}
@@ -626,9 +741,9 @@ function ChoreCard({ name, dueDate, effort, priority, onClick }) {
         const choreDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
         if (choreDate.getTime() === today.getTime()) {
-            return `Today, ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+            return `Today, ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} `;
         } else if (choreDate.getTime() === tomorrow.getTime()) {
-            return `Tomorrow, ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+            return `Tomorrow, ${date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} `;
         } else {
             return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
         }

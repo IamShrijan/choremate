@@ -32,7 +32,7 @@ function Avatar({ src, alt, size = "40px" }) {
 }
 
 // Chore Detail Modal Component
-export default function ChoreDetailModal({ chore, onClose, onComplete }) {
+export default function ChoreDetailModal({ chore, onClose, onComplete, onRefresh }) {
     const [notes, setNotes] = useState(chore.notes || "");
     const [isRescheduling, setIsRescheduling] = useState(false);
     const [newDueDate, setNewDueDate] = useState(() => {
@@ -82,17 +82,49 @@ export default function ChoreDetailModal({ chore, onClose, onComplete }) {
         });
     };
 
-    const handleReschedule = () => {
-        console.log("Rescheduling to:", newDueDate, newDueTime);
-        setIsRescheduling(false);
+    const handleMarkComplete = () => {
+        if (onComplete) {
+            onComplete(chore.id);
+        }
+    };
+
+    const handleReschedule = async () => {
+        try {
+            // Import the API
+            const { choresAPI } = await import('../utils/api');
+
+            // Combine date and time into ISO format
+            const newDueDateISO = `${newDueDate}T${newDueTime}:00`;
+
+            console.log("Rescheduling chore to:", newDueDateISO);
+
+            // Call the API to update due date
+            await choresAPI.updateDueDate(chore.id, newDueDateISO);
+
+            console.log("Due date updated successfully");
+
+            // Close reschedule mode
+            setIsRescheduling(false);
+
+            // Trigger refresh in parent BEFORE closing modal
+            if (onRefresh) {
+                console.log("Calling onRefresh...");
+                await onRefresh();
+                console.log("Refresh complete");
+            } else {
+                console.warn("onRefresh callback not provided");
+            }
+
+            // Close the modal after refresh completes
+            onClose();
+        } catch (error) {
+            console.error("Error rescheduling chore:", error);
+            alert("Failed to reschedule chore. Please try again.");
+        }
     };
 
     const handleSaveNotes = () => {
         console.log("Saving notes:", notes);
-    };
-
-    const handleMarkComplete = () => {
-        onComplete(chore.id);
     };
 
     return (
@@ -170,9 +202,6 @@ export default function ChoreDetailModal({ chore, onClose, onComplete }) {
                                         border: `1px solid ${priorityColors[chore.priority].border}`,
                                     }}>
                                         {chore.priority.charAt(0).toUpperCase() + chore.priority.slice(1)}
-                                    </span>
-                                    <span style={{ color: "#6b7280", fontSize: "12px" }}>
-                                        {chore.category}
                                     </span>
                                 </div>
                             </div>
@@ -438,17 +467,29 @@ export default function ChoreDetailModal({ chore, onClose, onComplete }) {
                             </h4>
                             <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
                                 <button
-                                    onClick={handleMarkComplete}
                                     style={{
                                         width: "100%",
                                         padding: "12px",
-                                        backgroundColor: "#111827",
+                                        backgroundColor: "#7c3aed",
                                         color: "white",
                                         border: "none",
                                         borderRadius: "8px",
                                         cursor: "pointer",
                                         fontSize: "14px",
                                         fontWeight: "600",
+                                        transition: "all 0.2s ease",
+                                    }}
+                                    onClick={async () => {
+                                        if (onComplete) {
+                                            await onComplete(chore.id);
+                                            onClose(); // Close modal after completing
+                                        }
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        e.currentTarget.style.backgroundColor = "#6d28d9";
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        e.currentTarget.style.backgroundColor = "#7c3aed";
                                     }}
                                 >
                                     Mark as Complete

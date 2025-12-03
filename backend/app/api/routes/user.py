@@ -110,3 +110,34 @@ def get_user_profile(
         preferences=preferences_info,
         ticket_stats=ticket_stats,
     )
+
+
+@router.get("/fetch-roommates")
+def fetch_roommates(
+    db: Session = Depends(get_db), current_user=Depends(get_current_user)
+):
+    """
+    Fetch all users (roommates) in the current user's house.
+    Returns a list of users with their basic information.
+    """
+    if not current_user.house_id:
+        raise HTTPException(
+            status_code=400, detail="You must belong to a house to view roommates."
+        )
+
+    # Query all users in the same house
+    roommates = db.query(User).filter(User.house_id == current_user.house_id).all()
+
+    # Format the response
+    result = []
+    for roommate in roommates:
+        result.append(
+            {
+                "id": roommate.id,
+                "name": roommate.name,
+                "email": roommate.email,
+                "is_current_user": roommate.id == current_user.id,
+            }
+        )
+
+    return result

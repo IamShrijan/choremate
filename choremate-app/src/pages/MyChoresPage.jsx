@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import ChoreDetailModal from "../components/ChoreDetailModal";
 import AddChoreModal from "../components/AddChoreModal";
 
-export default function MyChoresPage({ onBack, allChores = [], onAddChore, onCompleteChore, completedChores = [] }) {
+export default function MyChoresPage({ onBack, allChores = [], onAddChore, onCompleteChore, completedChores = [], onRefresh }) {
     const [selectedChore, setSelectedChore] = useState(null);
     const [showAddChore, setShowAddChore] = useState(false);
     const [currentWeekStart, setCurrentWeekStart] = useState(() => {
@@ -301,6 +301,7 @@ export default function MyChoresPage({ onBack, allChores = [], onAddChore, onCom
                         }
                         setSelectedChore(null);
                     }}
+                    onRefresh={onRefresh}
                 />
             )}
 
