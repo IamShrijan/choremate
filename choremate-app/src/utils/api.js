@@ -143,6 +143,19 @@ export const choresAPI = {
         method: 'POST',
       });
     },
+    saveGeneratedChores: async (chores) => {
+      return apiRequest('/chores/add-chores', {
+        method: 'POST',
+        body: JSON.stringify(chores),
+      });
+    },
+    
+    // Generate monthly tickets for all chores in the house using AI
+    generateMonthlyTickets: async () => {
+      return apiRequest('/chores/generate-monthly-tickets', {
+        method: 'POST',
+      });
+    },
   };
 
 // Export the base request function for other API calls

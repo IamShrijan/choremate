@@ -47,6 +47,8 @@ export default function GeneratedSchedulePage({
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [generatingTickets, setGeneratingTickets] = useState(false);
   // Remove totalChoresCreated state - we'll use chores.length instead
 
   // Load AI‑generated chores for the current user when page mounts
@@ -156,9 +158,127 @@ export default function GeneratedSchedulePage({
     setShowAddForm(false);
   };
 
-  const handleAccept = () => {
-    onAccept(chores);
+  const handleAccept = async () => {
+    setSaving(true);
+    setError("");
+    
+    try {
+      // Step 1: Save chores to database
+      const choresToSave = chores.map((chore) => ({
+        name: chore.name,
+        description: chore.description,
+        difficulty_level: chore.difficulty_level,
+        duration: chore.duration,
+        chore_frequency: chore.chore_frequency,
+        chore_priority: chore.chore_priority,
+        notes: chore.notes || null,
+        icon: chore.icon || null,
+      }));
+
+      const saveResult = await choresAPI.saveGeneratedChores(choresToSave);
+      
+      if (saveResult.status !== "chores added to db") {
+        setError("Failed to save chores. Please try again.");
+        setSaving(false);
+        return;
+      }
+
+      // Step 2: Generate monthly tickets - show full page loading
+      setSaving(false);
+      setGeneratingTickets(true);
+
+      const ticketsResult = await choresAPI.generateMonthlyTickets();
+      
+      if (ticketsResult.status === "success") {
+        // Call the onAccept callback to navigate or show success
+        onAccept(chores);
+      } else {
+        setError(ticketsResult.message || "Failed to generate tickets. Please try again.");
+        setGeneratingTickets(false);
+      }
+    } catch (e) {
+      console.error("Failed to save chores or generate tickets:", e);
+      setError(e?.message || "Failed to complete the process. Please try again.");
+      setSaving(false);
+      setGeneratingTickets(false);
+    }
   };
+
+  // Show loading screen when generating tickets
+  if (generatingTickets) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background: "linear-gradient(to bottom right, #faf5ff, #f3e8ff)",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "16px",
+          gap: "24px",
+        }}
+      >
+        <div
+          style={{
+            width: "64px",
+            height: "64px",
+            borderRadius: "50%",
+            background: "linear-gradient(45deg, #4c1d95, #7c3aed, #e9d5ff, #f3e8ff, #7c3aed, #4c1d95)",
+            backgroundSize: "300% 300%",
+            animation: "rotate 4s linear infinite",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            boxShadow: "3px 3px 10px 1px rgba(76, 29, 149, 0.5)",
+          }}
+        >
+          <Sparkles 
+            style={{ 
+              width: "32px", 
+              height: "32px", 
+              color: "white",
+              animation: "pulse 1.5s ease-in-out infinite"
+            }} 
+          />
+        </div>
+        <p style={{ color: "#6b7280", fontSize: "16px", textAlign: "center" }}>
+          Generating chore chart for the entire month based on user preferences...
+        </p>
+        <style>{`
+          @keyframes rotate {
+            0% {
+              background-position: 0% 50%;
+            }
+            50% {
+              background-position: 100% 50%;
+            }
+            100% {
+              background-position: 0% 50%;
+            }
+          }
+          @keyframes pulse {
+            0%, 100% {
+              opacity: 1;
+              transform: scale(1);
+            }
+            50% {
+              opacity: 0.7;
+              transform: scale(0.95);
+            }
+          }
+          @keyframes spin {
+            0% {
+              transform: rotate(0deg);
+            }
+            100% {
+              transform: rotate(360deg);
+            }
+          }
+        `}</style>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -221,6 +341,14 @@ export default function GeneratedSchedulePage({
             50% {
               opacity: 0.7;
               transform: scale(0.95);
+            }
+          }
+          @keyframes spin {
+            0% {
+              transform: rotate(0deg);
+            }
+            100% {
+              transform: rotate(360deg);
             }
           }
         `}</style>
@@ -1096,8 +1224,9 @@ export default function GeneratedSchedulePage({
           </Button>
           <Button
             onClick={handleAccept}
+            disabled={saving || generatingTickets || chores.length === 0}
             style={{
-              backgroundColor: "#6d28d9",
+              backgroundColor: (saving || generatingTickets) ? "#9ca3af" : "#6d28d9",
               color: "white",
               padding: "24px",
               display: "flex",
@@ -1105,10 +1234,44 @@ export default function GeneratedSchedulePage({
               justifyContent: "center",
               gap: "8px",
               fontSize: "16px",
+              opacity: (saving || generatingTickets || chores.length === 0) ? 0.6 : 1,
+              cursor: (saving || generatingTickets || chores.length === 0) ? "not-allowed" : "pointer",
             }}
           >
-            <CheckCircle style={{ width: "20px", height: "20px" }} />
-            This looks good to me
+            {saving ? (
+              <>
+                <div
+                  style={{
+                    width: "16px",
+                    height: "16px",
+                    border: "2px solid white",
+                    borderTop: "2px solid transparent",
+                    borderRadius: "50%",
+                    animation: "spin 1s linear infinite",
+                  }}
+                />
+                Saving...
+              </>
+            ) : generatingTickets ? (
+              <>
+                <div
+                  style={{
+                    width: "16px",
+                    height: "16px",
+                    border: "2px solid white",
+                    borderTop: "2px solid transparent",
+                    borderRadius: "50%",
+                    animation: "spin 1s linear infinite",
+                  }}
+                />
+                Generating...
+              </>
+            ) : (
+              <>
+                <CheckCircle style={{ width: "20px", height: "20px" }} />
+                This looks good to me
+              </>
+            )}
           </Button>
         </div>
       </div>

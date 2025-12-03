@@ -1,3 +1,4 @@
+from typing import List
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -39,6 +40,47 @@ def add_chore(
     return {"status": "chore added", "chore_id": new_chore.id}
 
 
+@router.post("/add-chores")
+def add_chores(
+    chores: List[ChoreCreate],
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """
+    Add multiple chores at once.
+    """
+    if not current_user.house_id:
+        raise HTTPException(status_code=400, detail="You must belong to a house first.")
+
+    created_chores = []
+    for chore in chores:
+        new_chore = Chore(
+            name=chore.name,
+            description=chore.description,
+            difficulty_level=chore.difficulty_level,
+            chore_frequency=chore.chore_frequency,
+            chore_priority=chore.chore_priority,
+            duration=chore.duration,
+            notes=chore.notes,
+            icon=chore.icon,
+            house_id=current_user.house_id,
+        )
+        db.add(new_chore)
+        created_chores.append(new_chore)
+
+    # Commit the changes to the database
+    db.commit()
+
+    # Refresh the created chores
+    for chore in created_chores:
+        db.refresh(chore)
+
+    return {
+        "status": "chores added to db",
+        "chores_count": len(created_chores),
+    }
+
+
 @router.post("/generate-house-chores")
 def generate_house_chores_for_users(
     db: Session = Depends(get_db),
@@ -73,22 +115,36 @@ def generate_house_chores_for_users(
     return result
 
 
-# TODO: Add an api to create new tickets after generated/edited chores
-
-
-@router.post("/generate-monthly-batch")
-def generate_tickets(
-    month: int,
-    year: int,
+@router.post("/generate-monthly-tickets")
+def generate_monthly_tickets_for_house(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
     """
-    Triggers the batch ticket generation logic.
-    In production, this is usually called by a cron job (system timer), not a user button.
+    Generate monthly tickets for all chores in the house using AI.
+    This creates fair assignments based on user preferences and chore data.
     """
-    result = generate_monthly_tickets(db, current_user.house_id, year, month)
-    return result
+    try:
+        if not current_user.house_id:
+            raise HTTPException(
+                status_code=400, detail="You must belong to a house first."
+            )
+
+        result = generate_monthly_tickets(db, current_user.house_id)
+
+        if result["status"] == "error":
+            raise HTTPException(status_code=400, detail=result["message"])
+
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Log the error for debugging
+        print(f"Error generating monthly tickets: {str(e)}")
+        import traceback
+
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @router.patch("/ticket/{ticket_id}")

@@ -15,7 +15,7 @@ from ..models.model import House, User, UserPreference, Chore, Ticket
 from ..core.generate_house_chores import get_gemini_client
 
 PROMPT_TEMPLATE = r"""
-You are an expert Home Management AI that creates fair monthly chore assignments for household members.
+You are an expert Home Management AI that creates fair weekly chore assignments for household members.
 
 ### HOUSEHOLD CONTEXT
 **House Members:**
@@ -28,9 +28,9 @@ You are an expert Home Management AI that creates fair monthly chore assignments
 {chores_str}
 
 ### TASK
-Generate monthly ticket assignments for the upcoming month (starting {month_start_date}).
+Generate weekly ticket assignments for the upcoming week (starting {week_start_date}).
 For each chore, determine:
-1. Which day(s) of the month with due date it should be done (based on frequency)
+1. Which day(s) of the week with due date it should be done (based on frequency)
 2. Which household member should be assigned (based on preferences, availability, and fairness)
 
 ### ASSIGNMENT RULES
@@ -38,8 +38,8 @@ For each chore, determine:
    - Daily → Assign to different days (distribute across the week)
    - Twice a week → Assign to 2 days (e.g., Monday and Thursday)
    - Weekly → Assign to 1 day (typically Monday or based on preference)
-   - Once in two weeks → Assign to 1 day (2 weeks of the month only)
-   - Monthly → Assign to 1 day (1 day of the month only)
+   - Once in two weeks → Assign to 1 day (2 weeks of the next 4 weeks only)
+   - Monthly → Assign to 1 day (1 day of the next 4 weeks only)
 
 2. **Fairness:**
    - Distribute chores evenly across all household members
@@ -51,7 +51,7 @@ For each chore, determine:
    - Respect time_availability when possible
    - Consider special_requirements (e.g., avoid physically demanding tasks for those with limitations)
 
-Generate the monthly ticket assignments now.
+Generate the weekly ticket assignments now.
 """
 
 
@@ -69,13 +69,13 @@ class MonthlyTicketsResponse(BaseModel):
     """Schema for the complete response from Gemini"""
 
     tickets: List[TicketAssignment] = Field(
-        description="List of monthly ticket assignments"
+        description="List of weekly ticket assignments"
     )
 
 
-def generate_monthly_tickets(db: Session, house_id: str) -> Dict[str, Any]:
+def generate_weekly_tickets(db: Session, house_id: str) -> Dict[str, Any]:
     """
-    Generate monthly tickets for all chores in a house using Gemini AI.
+    Generate weekly tickets for all chores in a house using Gemini AI.
     Uses user preferences and chore data to create fair assignments.
     """
     # 1. Get house information
@@ -132,15 +132,17 @@ def generate_monthly_tickets(db: Session, house_id: str) -> Dict[str, Any]:
         chores_parts.append(chore_str)
     chores_str = "\n".join(chores_parts)
 
-    # 7. Calculate month start date
-    month_start_date = datetime.now().replace(day=1).strftime("%Y-%m-%d")
+    # 7. Calculate week start date from today
+    # Week starts from today until 7 days from today
+    week_start_date = datetime.now().strftime("%Y-%m-%d")
+    week_end_date = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
 
     # 8. Format the complete prompt
     prompt = PROMPT_TEMPLATE.format(
         user_list_str=user_list_str,
         user_preferences_str=user_preferences_str,
         chores_str=chores_str,
-        month_start_date=month_start_date,
+        week_start_date=week_start_date,
     )
 
     # 9. Get or create Gemini client
