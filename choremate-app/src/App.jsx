@@ -94,6 +94,10 @@ function App() {
     setCurrentView('dashboard');
   };
 
+  const handleGoToDashboard = () => {  // NEW: Handler for dashboard navigation
+    setCurrentView('dashboard');
+  };
+
   const handleLogout = () => {
     localStorage.removeItem('auth_token');
     setIsLoggedIn(false);
@@ -163,6 +167,7 @@ function App() {
       <WaitingForRoomatesPage
         // Remove roommates prop - let it fetch from API
         onContinue={handleCompleteHouseholdSurvey}
+        onDashboard={handleGoToDashboard}  // NEW: Pass dashboard handler
       />
     );
   }

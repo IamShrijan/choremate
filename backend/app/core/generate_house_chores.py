@@ -14,98 +14,10 @@ from ..models.model import House, User, UserPreference, Chore
 from ..schemas.chore_and_ticket import GeneratedChore
 from .default_chores import get_default_chores
 
-# PROMPT_TEMPLATE = r"""
-# You are a helpful assistant that distributes weekly chore instances fairly among household members.
-
-# AVAILABLE CHORES (You must create instances for ALL these chores):
-# {default_chores_str}
-
-# HOUSEHOLD MEMBERS:
-# {user_list_str}
-
-# DETAILED MEMBER PREFERENCES:
-# {user_preferences_str}
-
-# TASK:
-# Create WEEKLY INSTANCES of each chore based on their frequency and assign them to household members.
-
-# IMPORTANT CONCEPTS:
-# - Each chore needs to be completed multiple times per week based on its frequency
-# - Daily chores need 7 instances (one for each day: Monday-Sunday)
-# - Weekly chores need 1 instance (for the week)
-# - Bi-weekly chores need 2 instances (for the week)
-
-# EXAMPLE:
-# - "Dishes" (Daily): Create 7 instances, assign different people to different days
-# - "Kitchen Floors" (Weekly): Create 1 instance, assign to one person
-# - If 3 people "don't mind" and "Kitchen Counters" is Daily (7 instances):
-#   - Person A: 3 instances (Mon, Wed, Fri)
-#   - Person B: 2 instances (Tue, Thu)
-#   - Person C: 2 instances (Sat, Sun)
-#     But, additional task must be assigned to B & C because they got only 2 instances each to balance fairness.
-
-#   This ensures all 7 days are covered fairly!
-
-# CRITICAL REQUIREMENTS (PRIORITY ORDER):
-
-# 1. FAIRNESS IS MANDATORY - ALL chores MUST be completed:
-#    - EVERYONE must participate in chores, even if they marked everything as "prefer to avoid"
-#    - The ONLY exception: if someone has a disability/medical limitation that prevents a specific task
-#    - Weekly scores (difficulty × frequency) must be balanced across ALL users
-#    - Weekly score calculation: difficulty_level × instances_per_week
-#      - Daily Chores (7 instances): score = difficulty × 7
-#      - Weekly Chores (1 instance): score = difficulty × 1
-#      - Bi-weekly Chores (2 instances): score = difficulty × 2
-#    - Total weekly scores should be within 5% of each other across all users
-
-# 2. DISTRIBUTE INSTANCES EVENLY:
-#    - For Daily chores (7 instances): Split the 7 days evenly among available users
-
-# 3. USE PREFERENCES TO GUIDE ASSIGNMENT (but don't compromise fairness):
-#    - Prioritize users who marked "dont mind" for that chore
-#    - Next, users who marked "neutral"
-#    - Last, users who marked "prefer to avoid"
-#    - BUT: If everyone marked "prefer to avoid", still assign fairly - everyone shares the burden
-#    - Preferences help decide WHICH days/instances go to WHICH people, but everyone must participate
-
-# 4. RESPECT SPECIAL REQUIREMENTS:
-#    - If someone has mobility issues mentioned in special_requirements, don't assign physically demanding chores
-#    - If someone has allergies, avoid assigning chores with cleaning products they're allergic to
-#    - Still maintain fairness - adjust other chores to compensate
-
-# 5. CONSIDER AVAILABILITY:
-#    - Match chore timing with user's time_availability (Morning, Afternoon, Evening)
-#    - Match chore days with user's day_availability (Weekday, Weekend)
-#    - But don't let this compromise fairness - everyone should still get a balanced workload
-
-# OUTPUT REQUIREMENTS:
-# - For each chore, create the required number of instances based on frequency:
-#   - Daily → 7 instances (Monday through Sunday)
-#   - Weekly → 1 instance (specify day_of_week)
-#   - Monthly → 1 instance (specify day_of_week, typically first week)
-#   - One-time → 1 instance
-# - Each instance must have:
-#   - All chore details (name, description, difficulty, duration, frequency, priority)
-#   - assigned_user_id (who does this instance)
-#   - day_of_week (for Daily and Weekly chores)
-# - Use exact chore names from the available chores list
-# - Use the difficulty, duration, frequency, and priority from the chore definitions
-
-# FAIRNESS VALIDATION:
-# After assigning all instances, verify:
-# - Every user has similar total weekly scores (within 5% difference)
-# - All 7 days are covered for Daily chores
-# - No user is overloaded with difficult chores
-# - Distribution feels equitable considering preferences while maintaining balance
-
-# Return ALL chore instances in the "chores" array.
-# """
-
 
 PROMPT_TEMPLATE = r"""
 You are an expert Home Management Consultant AI. 
-Your goal is to generate a comprehensive, personalized list of household chores based on specific data points
-for the given house.
+Your goal is to generate a simple, practical list of household chores that balances everyone's preferences without overwhelming the household.
 
 ### INPUT DATA
 1. **House Layout:** {house_layout_str}
@@ -113,51 +25,101 @@ for the given house.
 3. **Number of Household Members:** {number_of_household_members}
 4. **User Preferences:** {user_preferences_str}
 
-### INSTRUCTIONS
-Analyze the inputs and generate a list of `GeneratedChore` objects. Follow this logic:
+### CLEANLINESS LEVEL GUIDE
+Cleanliness levels range from 1 (Presentable) to 5 (Spotless):
+- **1 - Presentable:** Basic hygiene only. Essential tasks like dishes and trash.
+- **2 - Livable:** Minimal cleaning. Core hygiene tasks plus light tidying.
+- **3 - Tidy:** Regular cleaning. Standard weekly maintenance.
+- **4 - Clean:** Thorough cleaning. Weekly deep cleaning included.
+- **5 - Spotless:** Intensive cleaning. Daily attention to detail.
 
-1.  **Layout Matching:**
-    * Analyze the House Layout. If a room exists in the layout (e.g., "Guest Room"), ensure chores are assigned to it.
-    * If a room is missing (e.g., user has no "Garden"), REMOVE any default chores associated with that area.
-    * If the layout implies unique areas (e.g., "Home Gym"), create NEW chores appropriate for that room even if they are not in the default list.
+### KEY PRINCIPLES
 
-2.  **Preference Adaptation:**
-    * **Cleanliness Level:** Cleanliness is the level iof cleanliness expected for the house, where:
-    if cleanliness_level is: 
-        Presentable=1, 
-        Livable=2, 
-        Tidy=3, 
-        Clean=4, 
-        Spotless=5
+1. **Balance Cleanliness Levels:**
+   - Calculate the AVERAGE cleanliness level across all household members
+   - For hygiene-critical tasks (Dishes, Trash, Toilet Cleaning): Use the HIGHEST cleanliness level among all members to ensure no one's hygiene standards are compromised
+   - For non-essential tasks: Use the AVERAGE cleanliness level to avoid overwhelming members who prefer simpler routines
+   - NEVER create chores that only satisfy the highest cleanliness level - balance is key
 
-    If users prefer a "spotless" home, increase the `chore_priority` and potentially `chore_frequency`.
-    If they are "relaxed," lower the priority for non-essential tasks. Consider all the household members' preferences when you setting the values for the chores.
+2. **Respect Availability (KEEP IT SIMPLE):**
+   - If users have LIMITED time availability (only 1-2 time slots selected), reduce the number of chores significantly
+   - Focus on essential tasks only when availability is constrained
+   - If most users are "busy" (limited time slots), create a minimal chore list (8-12 chores max)
+   - If users have generous availability, you can include more comprehensive tasks
 
-    * **Time Availability:** If users are "busy," keep `duration` realistic and efficient.
-    * **Day Availability:** If users are "busy" on certain days, adjust the `chore_frequency` accordingly, without compromising cleanliness levels and hygiene expected.
+3. **Chore Frequency Based on Cleanliness:**
+   - **Levels 1-2:** Essential tasks only, lower frequency (e.g., Weekly or Bi-weekly)
+   - **Level 3:** Standard tasks, moderate frequency (e.g., Weekly)
+   - **Levels 4-5:** Comprehensive tasks, higher frequency (e.g., Daily or Twice a week)
+   - Match frequency to the calculated cleanliness level - don't overdo it
 
-3.  **Mandatory Rules:**
-    * Hygiene-critical tasks (Dishes, Trash, Toilet Cleaning) MUST be included regardless of user preferences, though frequency can be adjusted slightly based on household size but not comromising the cleanliness level expected.
+4. **Task Selection:**
+   - **ALWAYS INCLUDE:** Hygiene-critical tasks (Dishes, Trash, Bathroom cleaning) - these are non-negotiable
+   - **INCLUDE IF:** Average cleanliness level is 3+ (moderate tidying tasks)
+   - **INCLUDE IF:** Average cleanliness level is 4+ (deep cleaning tasks)
+   - **EXCLUDE IF:** Average cleanliness level is 1-2 (only essential hygiene)
+   - **EXCLUDE:** Decorative or optional tasks if users indicate they're busy
 
-4.  **Icon/Emoji Assignment:**
-    * Each chore MUST include a relevant emoji in the `icon` field. Use appropriate emojis that visually represent the chore.
-    * Reference the default chores database for examples of appropriate emoji usage:
-      - Kitchen-related chores: 🧽 (sponge), 🍽️ (plate), 🧹 (broom)
-      - Bathroom-related chores: 🚽 (toilet), 🚿 (shower), 🪥 (toothbrush), 🧽 (sponge)
-      - Cleaning chores: 🧹 (broom), 🪠 (plunger), ✨ (sparkles for dusting)
-      - Trash/Garbage: 🗑️ (trash can)
-      - Shopping: 🛒 (shopping cart)
-      - Living areas: 🛋️ (couch)
-    * For new or custom chores, choose an emoji that best represents the task. Use common, widely-supported emojis.
-    * The icon should be a single emoji character (e.g., "🧽", "🍽️", "🚽") that clearly relates to the chore type.
+5. **Duration Estimates:**
+   - Keep durations realistic and efficient
+   - For busy households: Prioritize shorter, focused tasks
+   - Don't create tasks longer than 30-45 minutes unless absolutely necessary for the cleanliness level
+
+6. **Layout Matching:**
+   - Only include chores for rooms that exist in the house layout
+   - Remove default chores for areas not present (e.g., no Garden = no garden chores)
+   - Create room-specific chores only if the room exists
+
+### GENERATION RULES
+
+**Step 1: Analyze Household Preferences**
+- Calculate average cleanliness level: Sum all cleanliness levels ÷ number of members
+- Identify highest cleanliness level (for hygiene-critical tasks)
+- Assess availability: Count how many time slots users selected (busy = 1-2 slots, normal = 3-4 slots)
+- Determine if household is "busy" (majority have limited availability)
+
+**Step 2: Determine Chore Count**
+- **Busy household + Low cleanliness (1-2):** 6-8 essential chores only
+- **Busy household + Medium cleanliness (3):** 8-10 core chores
+- **Normal availability + Medium cleanliness (3):** 10-12 standard chores
+- **Normal availability + High cleanliness (4-5):** 12-15 comprehensive chores
+- **High cleanliness (4-5) + Not busy:** 15-18 thorough chores
+
+**Step 3: Create Chores**
+- Start with hygiene-critical tasks (use highest cleanliness level for frequency/priority)
+- Add standard cleaning tasks (use average cleanliness level)
+- Add advanced tasks only if average cleanliness level warrants it
+- Keep it simple - don't create redundant or overlapping chores
+- Each chore should have clear purpose and reasonable duration
+
+**Step 4: Set Values**
+- `difficulty_level`: 1-5 based on physical/intellectual demand
+- `duration`: Realistic time estimate in minutes (5-45 min typically)
+- `chore_frequency`: Based on cleanliness level requirement
+  - Hygiene-critical: Always frequent (Daily or Twice a week)
+  - Essential: Weekly minimum
+  - Standard: Weekly or Bi-weekly
+  - Advanced: Monthly or as needed
+- `chore_priority`: 
+  - Hygiene-critical: Always High (3)
+  - Essential for cleanliness level: Medium-High (2-3)
+  - Optional/nice-to-have: Low-Medium (1-2)
+- `notes`: Explain why this chore exists and how values were determined based on preferences
 
 ### OUTPUT
-Generate the list of chores for the house now. Ensure every chore has:
+Generate a BALANCED, SIMPLE list of chores that:
+- Respects the highest cleanliness level for hygiene-critical tasks
+- Uses average cleanliness level for general tasks
+- Keeps chore count reasonable based on availability
+- Focuses on essential tasks when users are busy
+- Never overwhelms the household
+
+Ensure every chore has:
 - A descriptive `name`
 - A detailed `description` explaining what needs to be done
-- An appropriate `icon` emoji that visually represents the chore
-- Appropriate `difficulty_level`, `duration`, `chore_frequency`, and `chore_priority` values
-- A `notes` field explaining why this chore is needed and how the values were determined
+- An appropriate `icon` emoji (single character: 🧽, 🍽️, 🚽, etc.)
+- Appropriate `difficulty_level` (1-5), `duration` (minutes), `chore_frequency`, and `chore_priority` (1-3)
+- A `notes` field explaining the reasoning based on cleanliness levels and availability
 """
 
 

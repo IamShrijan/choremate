@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 
 from ...schemas.house import HouseCreate, HouseJoin, HouseInvite
-from ...models.model import House, User, UserPreference
+from ...models.model import House, User, UserPreference, Ticket  # Add Ticket import
 from ..dependencies import get_current_user
 from ...db.database import get_db
 
@@ -75,6 +75,7 @@ def get_household_members_status(
     """
     Get all household members with their preference completion status.
     Returns list of members with their email, name, and whether they've completed preferences.
+    Also returns admin status and whether tickets have been generated.
     """
     if not current_user.house_id:
         raise HTTPException(status_code=400, detail="User is not part of any household")
@@ -83,8 +84,20 @@ def get_household_members_status(
     if not house:
         raise HTTPException(status_code=404, detail="Household not found")
 
-    # Get all users in this household
+    # Determine if current user is admin (first user in joined_users is the creator/admin)
+    joined_users = house.joined_users or []
+    is_admin = len(joined_users) > 0 and joined_users[0] == current_user.id
+
+    # Check if tickets have been generated (chores are finalized and tickets created)
+    # Get all users in the house first
     house_members = db.query(User).filter(User.house_id == house.id).all()
+    house_member_ids = [member.id for member in house_members]
+
+    # Count tickets for this house's users
+    ticket_count = (
+        db.query(Ticket).filter(Ticket.assigned_user_id.in_(house_member_ids)).count()
+    )
+    tickets_generated = ticket_count > 0
 
     # Get invited emails that haven't joined yet
     invited_emails = house.invited_emails or []
@@ -138,6 +151,8 @@ def get_household_members_status(
         "total_members": total_members,
         "completed_count": completed_count,
         "all_completed": all_completed,
+        "is_admin": is_admin,  # NEW: Admin status
+        "tickets_generated": tickets_generated,  # NEW: Ticket status
     }
 
 
