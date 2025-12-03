@@ -24,7 +24,7 @@ function App() {
       if (token) {
         setIsCheckingHousehold(true);
         try {
-          const userInfo = await userAPI.getCurrentUser();
+          const userInfo = await userAPI.getMe();
           if (userInfo.house_id) {
             // User has a household, go directly to main dashboard
             setIsLoggedIn(true);

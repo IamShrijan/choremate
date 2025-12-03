@@ -5,7 +5,6 @@ import {
     User,
     Clock,
     Repeat,
-    Tag,
 } from "lucide-react";
 
 export default function AddChoreModal({ onClose, onAdd }) {
@@ -15,7 +14,6 @@ export default function AddChoreModal({ onClose, onAdd }) {
     const [assignedTo, setAssignedTo] = useState("");
     const [effort, setEffort] = useState("");
     const [frequency, setFrequency] = useState("");
-    const [category, setCategory] = useState("");
     const [priority, setPriority] = useState("");
     const [notes, setNotes] = useState("");
 
@@ -46,7 +44,6 @@ export default function AddChoreModal({ onClose, onAdd }) {
             assignedTo: assignedTo || "Unassigned",
             frequency: frequency || "One-time",
             notes: notes || "",
-            category: category || "General",
         };
 
         console.log("New chore created:", newChore);
@@ -284,76 +281,38 @@ export default function AddChoreModal({ onClose, onAdd }) {
                                 </div>
                             </div>
 
-                            {/* Frequency & Category */}
-                            <div style={{
-                                display: "grid",
-                                gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-                                gap: "16px",
-                            }}>
-                                <div>
-                                    <label style={{
-                                        display: "block",
+                            {/* Frequency */}
+                            <div>
+                                <label style={{
+                                    display: "block",
+                                    fontSize: "14px",
+                                    fontWeight: "500",
+                                    color: "#111827",
+                                    marginBottom: "8px",
+                                }}>
+                                    <Repeat style={{ width: "16px", height: "16px", display: "inline", marginRight: "8px" }} />
+                                    Frequency
+                                </label>
+                                <select
+                                    value={frequency}
+                                    onChange={(e) => setFrequency(e.target.value)}
+                                    style={{
+                                        width: "100%",
+                                        padding: "10px 12px",
+                                        border: "1px solid #e5e7eb",
+                                        borderRadius: "8px",
                                         fontSize: "14px",
-                                        fontWeight: "500",
-                                        color: "#111827",
-                                        marginBottom: "8px",
-                                    }}>
-                                        <Repeat style={{ width: "16px", height: "16px", display: "inline", marginRight: "8px" }} />
-                                        Frequency
-                                    </label>
-                                    <select
-                                        value={frequency}
-                                        onChange={(e) => setFrequency(e.target.value)}
-                                        style={{
-                                            width: "100%",
-                                            padding: "10px 12px",
-                                            border: "1px solid #e5e7eb",
-                                            borderRadius: "8px",
-                                            fontSize: "14px",
-                                            backgroundColor: "white",
-                                        }}
-                                    >
-                                        <option value="">Select frequency</option>
-                                        <option value="Daily">Daily</option>
-                                        <option value="Every 3 Days">Every 3 Days</option>
-                                        <option value="Weekly">Weekly</option>
-                                        <option value="Bi-weekly">Bi-weekly</option>
-                                        <option value="Monthly">Monthly</option>
-                                        <option value="One-time">One-time</option>
-                                    </select>
-                                </div>
-                                <div>
-                                    <label style={{
-                                        display: "block",
-                                        fontSize: "14px",
-                                        fontWeight: "500",
-                                        color: "#111827",
-                                        marginBottom: "8px",
-                                    }}>
-                                        <Tag style={{ width: "16px", height: "16px", display: "inline", marginRight: "8px" }} />
-                                        Category
-                                    </label>
-                                    <select
-                                        value={category}
-                                        onChange={(e) => setCategory(e.target.value)}
-                                        style={{
-                                            width: "100%",
-                                            padding: "10px 12px",
-                                            border: "1px solid #e5e7eb",
-                                            borderRadius: "8px",
-                                            fontSize: "14px",
-                                            backgroundColor: "white",
-                                        }}
-                                    >
-                                        <option value="">Select category</option>
-                                        <option value="Kitchen">Kitchen</option>
-                                        <option value="Bathroom">Bathroom</option>
-                                        <option value="Living Room">Living Room</option>
-                                        <option value="Bedroom">Bedroom</option>
-                                        <option value="Outdoor">Outdoor</option>
-                                        <option value="General">General</option>
-                                    </select>
-                                </div>
+                                        backgroundColor: "white",
+                                    }}
+                                >
+                                    <option value="">Select frequency</option>
+                                    <option value="Daily">Daily</option>
+                                    <option value="Every 3 Days">Every 3 Days</option>
+                                    <option value="Weekly">Weekly</option>
+                                    <option value="Bi-weekly">Bi-weekly</option>
+                                    <option value="Monthly">Monthly</option>
+                                    <option value="One-time">One-time</option>
+                                </select>
                             </div>
 
                             {/* Priority */}
