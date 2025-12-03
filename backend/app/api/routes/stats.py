@@ -17,26 +17,94 @@ def get_leaderboard(
     db: Session = Depends(get_db), current_user=Depends(get_current_user)
 ):
     """
-    Calculates points based on completed chores difficulty level.
+    Calculate leaderboard based on completion rate for the current week (Sunday to Saturday).
+    Rating = (completed tasks / total tasks assigned) × 5
+    Returns users ordered by highest rating first.
     """
-    results = (
-        db.query(
-            User.name,
-            func.count(Ticket.id).label("tasks_done"),
-            func.sum(Chore.difficulty_level).label("points"),
-        )
-        .join(Ticket, Ticket.assigned_user_id == User.id)
-        .join(Chore, Ticket.chore_id == Chore.id)
-        .filter(Ticket.status == "Completed")
-        .filter(User.house_id == current_user.house_id)
-        .group_by(User.id)
-        .order_by(desc("points"))
-        .all()
+    if not current_user.house_id:
+        raise HTTPException(status_code=400, detail="User is not part of any household")
+
+    # Get current datetime and calculate week range (Sunday to Saturday)
+    now = datetime.utcnow()
+    current_date = now.date()
+
+    # Get weekday (Monday=0, Tuesday=1, ..., Sunday=6)
+    weekday = current_date.weekday()
+
+    # Calculate days back to get to Sunday (start of week)
+    # Monday=0 -> 1 day back, Tuesday=1 -> 2 days back, ..., Sunday=6 -> 0 days back
+    days_back = (weekday + 1) % 7
+
+    # Calculate Sunday (start of week) at 00:00:00
+    week_start = datetime.combine(
+        current_date - timedelta(days=days_back), datetime.min.time()
     )
 
-    leaderboard = [{"user": r[0], "tasks": r[1], "points": r[2] or 0} for r in results]
+    # Calculate Saturday (end of week) at 23:59:59
+    week_end = week_start + timedelta(days=6, hours=23, minutes=59, seconds=59)
 
-    return leaderboard
+    # Get all users in the household
+    house_users = db.query(User).filter(User.house_id == current_user.house_id).all()
+
+    if not house_users:
+        raise HTTPException(status_code=404, detail="No users found in household")
+
+    leaderboard_data = []
+
+    for user in house_users:
+        # Get all tickets assigned to this user for the current week (Sunday to Saturday)
+        all_tickets = (
+            db.query(Ticket)
+            .join(Chore, Ticket.chore_id == Chore.id)
+            .filter(
+                Ticket.assigned_user_id == user.id,
+                Chore.house_id == current_user.house_id,
+                Ticket.due_date >= week_start,
+                Ticket.due_date <= week_end,
+            )
+            .all()
+        )
+
+        # Count completed tickets
+        completed_tickets = [t for t in all_tickets if t.status == "Completed"]
+
+        total_tasks = len(all_tickets)
+        completed_tasks = len(completed_tickets)
+
+        # Calculate rating: (completed / total) × 5, rounded to 1 decimal
+        if total_tasks > 0:
+            rating = round((completed_tasks / total_tasks) * 5, 1)
+            # Cap rating at 5.0
+            rating = min(rating, 5.0)
+        else:
+            rating = 0.0
+
+        leaderboard_data.append(
+            {
+                "user_id": user.id,
+                "user_name": user.name,
+                "email": user.email,
+                "total_tasks": total_tasks,
+                "completed_tasks": completed_tasks,
+                "rating": rating,
+            }
+        )
+
+    # Sort by rating (highest first)
+    leaderboard_data.sort(key=lambda x: x["rating"], reverse=True)
+
+    # Add rank based on sorted position
+    for idx, entry in enumerate(leaderboard_data):
+        entry["rank"] = idx + 1
+
+    return {
+        "status": "success",
+        "leaderboard": leaderboard_data,
+        "report_period": {
+            "start": week_start.isoformat(),
+            "end": week_end.isoformat(),
+        },
+    }
 
 
 @router.post("/appreciate/{ticket_id}")
@@ -84,16 +152,22 @@ def get_fairness_report(
 ):
     """
     Calculate fairness report showing each household member's contribution
-    for the next 2 weeks based on chore duration (time commitment).
+    for the entire month based on chore duration (time commitment in minutes).
 
-    Returns contribution percentages using softmax normalization.
+    Returns:
+    - Total planned effort (all assigned tickets for the month)
+    - Completed effort (completed tickets)
+    - Chore counts
     """
     if not current_user.house_id:
         raise HTTPException(status_code=400, detail="User is not part of any household")
 
-    # Get current datetime
+    # Get current datetime and calculate month end
     now = datetime.utcnow()
-    two_weeks_from_now = now + timedelta(weeks=2)
+    # Get first day of current month
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    # Get last day of current month (approximate 30 days from month start)
+    month_end = month_start + timedelta(days=30)
 
     # Get all users in the household
     house_users = db.query(User).filter(User.house_id == current_user.house_id).all()
@@ -101,105 +175,48 @@ def get_fairness_report(
     if not house_users:
         raise HTTPException(status_code=404, detail="No users found in household")
 
-    # Calculate fairness score for each user
+    # Calculate fairness data for each user
     user_contributions = []
+    total_household_minutes = 0  # NEW: Track total household minutes
 
     for user in house_users:
-        # Get all tickets assigned to this user in the next 2 weeks
-        tickets = (
+        # Get all tickets assigned to this user for the current month (all statuses)
+        all_tickets = (
             db.query(Ticket, Chore)
             .join(Chore, Ticket.chore_id == Chore.id)
             .filter(
                 Ticket.assigned_user_id == user.id,
                 Chore.house_id == current_user.house_id,
-                Ticket.due_date >= now,
-                Ticket.due_date <= two_weeks_from_now,
-                Ticket.created_at <= now,  # Only include already created tickets
+                Ticket.due_date >= month_start,
+                Ticket.due_date <= month_end,
             )
             .all()
         )
 
-        # Calculate total duration (fairness score) for this user
-        total_duration = 0
-        chore_details = []
+        # Calculate total planned effort (all assigned tickets) - this is the purple bar value
+        total_planned_minutes = sum(chore.duration for _, chore in all_tickets)
 
-        for ticket, chore in tickets:
-            total_duration += chore.duration
-            chore_details.append(
-                {
-                    "chore_name": chore.name,
-                    "duration": chore.duration,
-                    "difficulty": chore.difficulty_level,
-                    "due_date": ticket.due_date.isoformat()
-                    if ticket.due_date
-                    else None,
-                    "status": ticket.status,
-                }
-            )
+        # Add to household total
+        total_household_minutes += total_planned_minutes
 
         user_contributions.append(
             {
                 "user_id": user.id,
                 "user_name": user.name,
-                "total_duration_minutes": total_duration,
-                "chore_count": len(tickets),
-                "chore_details": chore_details,
+                "total_planned_minutes": total_planned_minutes,  # Effort assigned to this person
+                "chore_count": len(
+                    all_tickets
+                ),  # Number of chores assigned to this person
             }
         )
-
-    # Calculate softmax for contribution percentages
-    # Extract durations for softmax calculation
-    durations = [uc["total_duration_minutes"] for uc in user_contributions]
-
-    # Handle edge case: if all durations are 0
-    if sum(durations) == 0:
-        # Equal distribution if no one has chores
-        contribution_percentages = [100.0 / len(durations) if durations else 0] * len(
-            durations
-        )
-    else:
-        # Apply softmax to get contribution percentages
-        # Using temperature=1 for standard softmax
-        # Scale durations to prevent overflow (optional but safe)
-        max_duration = max(durations) if durations else 1
-        scaled_durations = [d / max_duration for d in durations]
-
-        # Calculate exp values
-        exp_values = [math.exp(d) for d in scaled_durations]
-        sum_exp = sum(exp_values)
-
-        # Calculate softmax percentages
-        contribution_percentages = [(exp_val / sum_exp) * 100 for exp_val in exp_values]
-
-    # Add contribution percentage to each user's data
-    for i, user_contrib in enumerate(user_contributions):
-        user_contrib["contribution_percentage"] = round(contribution_percentages[i], 2)
-
-    # Sort by contribution percentage (highest first)
-    user_contributions.sort(key=lambda x: x["contribution_percentage"], reverse=True)
 
     return {
         "status": "success",
         "house_id": current_user.house_id,
         "report_period": {
-            "start": now.isoformat(),
-            "end": two_weeks_from_now.isoformat(),
+            "start": month_start.isoformat(),
+            "end": month_end.isoformat(),
         },
-        "total_household_minutes": sum(durations),
+        "total_household_minutes": total_household_minutes,  # NEW: Total for all users
         "user_contributions": user_contributions,
-        "fairness_analysis": {
-            "most_contributing": user_contributions[0]["user_name"]
-            if user_contributions
-            else None,
-            "least_contributing": user_contributions[-1]["user_name"]
-            if user_contributions
-            else None,
-            "average_contribution": round(100.0 / len(user_contributions), 2)
-            if user_contributions
-            else 0,
-            "is_balanced": max(contribution_percentages) - min(contribution_percentages)
-            < 20
-            if contribution_percentages
-            else True,
-        },
     }

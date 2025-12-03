@@ -6,9 +6,10 @@ import { useState, useEffect } from "react";
 import { houseAPI } from "../utils/api";
 
 export default function WaitingForRoommatesPage({
-    inviteCode, // Can be undefined now
-    roommates: initialRoommates, // Optional
+    inviteCode,
+    roommates: initialRoommates,
     onContinue = () => { },
+    onDashboard = () => { },  // NEW: Add dashboard callback
 }) {
     const [copied, setCopied] = useState(false);
     const [membersStatus, setMembersStatus] = useState(null);
@@ -21,6 +22,12 @@ export default function WaitingForRoommatesPage({
             try {
                 const status = await houseAPI.getMembersStatus();
                 setMembersStatus(status);
+                
+                // NEW: Check if tickets have been generated - redirect to dashboard
+                if (status.tickets_generated) {
+                    onDashboard(); // Navigate to dashboard
+                    return;
+                }
                 
                 // Convert to the format expected by the component
                 const formattedRoommates = status.members.map(member => ({
@@ -59,11 +66,11 @@ export default function WaitingForRoommatesPage({
 
         fetchStatus();
         
-        // Poll every 5 seconds to check for updates
+        // Poll every 5 seconds to check for updates (including tickets)
         const interval = setInterval(fetchStatus, 5000);
         
         return () => clearInterval(interval);
-    }, [inviteCode, initialRoommates]);
+    }, [inviteCode, initialRoommates, onDashboard]);
 
     const handleCopyCode = () => {
         const code = membersStatus?.invite_code || inviteCode;
@@ -87,6 +94,7 @@ export default function WaitingForRoommatesPage({
     }
 
     const members = membersStatus?.members || [];
+    const isAdmin = membersStatus?.is_admin || false;  // NEW: Get admin status
 
     // Count EVERY row we show (joined + invited)
     const totalCount = members.length;
@@ -94,6 +102,9 @@ export default function WaitingForRoommatesPage({
 
     // Only "Everyone's Ready" when EVERY row has preferences_completed === true
     const allCompleted = totalCount > 0 && completedCount === totalCount;
+
+    // Only admin can generate chores
+    const canGenerateChores = isAdmin && allCompleted;
 
     const displayInviteCode = membersStatus?.invite_code || inviteCode;
 
@@ -151,7 +162,7 @@ export default function WaitingForRoommatesPage({
                     </div>
                 )}
 
-                {/* Progress Card */}
+                {/* Progress Card - existing code remains the same */}
                 <Card style={{
                     borderColor: "#e9d5ff",
                     boxShadow: "0 20px 25px rgba(0, 0, 0, 0.1)",
@@ -263,7 +274,7 @@ export default function WaitingForRoommatesPage({
                     </CardContent>
                 </Card>
 
-                {/* Invite Code Card */}
+                {/* Invite Code Card - existing code remains the same */}
                 <Card style={{
                     borderColor: "#e9d5ff",
                     boxShadow: "0 20px 25px rgba(0, 0, 0, 0.1)",
@@ -332,43 +343,54 @@ export default function WaitingForRoommatesPage({
                     </CardContent>
                 </Card>
 
-                {/* Action Button - Always show, but disabled until all completed */}
+                {/* Action Button - Show different button based on admin status */}
                 <Button
                     onClick={onContinue}
-                    disabled={!allCompleted}
+                    disabled={!canGenerateChores}
                     style={{
                         width: "100%",
-                        backgroundColor: allCompleted ? "#16a34a" : "#d1d5db",
-                        color: allCompleted ? "white" : "#9ca3af",
+                        backgroundColor: canGenerateChores ? "#16a34a" : "#d1d5db",
+                        color: canGenerateChores ? "white" : "#9ca3af",
                         padding: "24px",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
                         fontSize: "16px",
                         fontWeight: "600",
-                        cursor: allCompleted ? "pointer" : "not-allowed",
-                        opacity: allCompleted ? 1 : 0.6,
+                        cursor: canGenerateChores ? "pointer" : "not-allowed",
+                        opacity: canGenerateChores ? 1 : 0.6,
                         transition: "all 0.3s ease",
                     }}
                     onMouseEnter={(e) => {
-                        if (allCompleted) {
+                        if (canGenerateChores) {
                             e.currentTarget.style.backgroundColor = "#15803d";
                         }
                     }}
                     onMouseLeave={(e) => {
-                        if (allCompleted) {
+                        if (canGenerateChores) {
                             e.currentTarget.style.backgroundColor = "#16a34a";
                         }
                     }}
                 >
                     <Sparkles style={{ width: "20px", height: "20px", marginRight: "8px" }} />
-                    Generate Household Schedule
+                    {isAdmin 
+                        ? (allCompleted ? "Generate Household Schedule" : "Waiting for Everyone to Complete Survey")
+                        : "Only creator can generate chores"
+                    }
                 </Button>
 
-                {!allCompleted && (
+                {!allCompleted && isAdmin && (
                     <div style={{ textAlign: "center", marginTop: "16px" }}>
                         <p style={{ color: "#6b7280", fontSize: "12px" }}>
                             Waiting for {totalCount - completedCount} more roommate{totalCount - completedCount !== 1 ? 's' : ''} to complete their survey
+                        </p>
+                    </div>
+                )}
+
+                {!isAdmin && allCompleted && (
+                    <div style={{ textAlign: "center", marginTop: "16px" }}>
+                        <p style={{ color: "#6b7280", fontSize: "12px" }}>
+                            Only the household creator can generate the schedule. Please wait for the creator to generate chores.
                         </p>
                     </div>
                 )}

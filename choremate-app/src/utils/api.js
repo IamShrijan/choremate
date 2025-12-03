@@ -191,5 +191,30 @@ export const choresAPI = {
   },
 };
 
+// Stats API functions
+export const statsAPI = {
+  getFairnessReport: async () => {
+    return apiRequest('/stats/fairness-report', {
+      method: 'GET',
+    });
+  },
+  
+  getLeaderboard: async () => {
+    return apiRequest('/stats/leaderboard', {
+      method: 'GET',
+    });
+  },
+};
+
+// Chatbot API functions
+export const chatbotAPI = {
+  chat: async (data) => {
+    return apiRequest('/ai-chatbot/chat', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+};
+
 // Export the base request function for other API calls
 export default apiRequest;

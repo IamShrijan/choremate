@@ -8,12 +8,13 @@ import {
   Edit2,
   Plus,
   X,
+  AlertCircle,
 } from "lucide-react";
 import Button from "../components/button";
 import { Card, CardContent } from "../components/card";
 import Input from "../components/input";
 import { Textarea } from "../components/textarea";
-import { choresAPI, userAPI } from "../utils/api";
+import { choresAPI, houseAPI } from "../utils/api";
 
 // Simple icon mapping for common chores (fallback to ✨)
 const getIconForChore = (name = "") => {
@@ -49,10 +50,35 @@ export default function GeneratedSchedulePage({
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [generatingTickets, setGeneratingTickets] = useState(false);
-  // Remove totalChoresCreated state - we'll use chores.length instead
+  const [isAdmin, setIsAdmin] = useState(false);  // NEW: Admin status
+  const [checkingAdmin, setCheckingAdmin] = useState(true);  // NEW: Admin check loading state
 
-  // Load AI‑generated chores for the current user when page mounts
+  // NEW: Check admin status on mount
   useEffect(() => {
+    const checkAdminStatus = async () => {
+      try {
+        const status = await houseAPI.getMembersStatus();
+        const adminStatus = status.is_admin || false;
+        setIsAdmin(adminStatus);
+        
+        if (!adminStatus) {
+          setError("Only the household creator can view and edit the generated schedule.");
+        }
+      } catch (err) {
+        console.error("Failed to check admin status:", err);
+        setError("Failed to verify permissions. Please try again.");
+      } finally {
+        setCheckingAdmin(false);
+      }
+    };
+
+    checkAdminStatus();
+  }, []);
+
+  // Load AI‑generated chores for the current user when page mounts (only if admin)
+  useEffect(() => {
+    if (!isAdmin || checkingAdmin) return; // Wait for admin check to complete
+
     const loadChores = async () => {
       setLoading(true);
       setError("");
@@ -85,8 +111,8 @@ export default function GeneratedSchedulePage({
           duration: chore.duration || 30,
           chore_frequency: chore.chore_frequency || "Weekly",
           chore_priority: chore.chore_priority || 2,
-          icon: chore.icon || getIconForChore(chore.name), // Use backend icon if present
-          notes: chore.notes || "", // Use 'notes' field instead of 'reason'
+          icon: chore.icon || getIconForChore(chore.name),
+          notes: chore.notes || "",
         }));
 
         setChores(mapped);
@@ -103,7 +129,7 @@ export default function GeneratedSchedulePage({
     };
 
     loadChores();
-  }, []);
+  }, [isAdmin, checkingAdmin]);
 
   const totalTime = chores.reduce((sum, chore) => sum + chore.duration, 0);
 
@@ -122,6 +148,10 @@ export default function GeneratedSchedulePage({
   };
 
   const handleEdit = (id) => {
+    if (!isAdmin) {
+      setError("Only the household creator can edit chores.");
+      return;
+    }
     setEditingId(id);
   };
 
@@ -130,10 +160,15 @@ export default function GeneratedSchedulePage({
   };
 
   const handleDelete = (id) => {
+    if (!isAdmin) {
+      setError("Only the household creator can delete chores.");
+      return;
+    }
     setChores(chores.filter((chore) => chore.id !== id));
   };
 
   const handleChange = (id, field, value) => {
+    if (!isAdmin) return;
     setChores(
       chores.map((chore) =>
         chore.id === id ? { ...chore, [field]: value } : chore
@@ -142,6 +177,10 @@ export default function GeneratedSchedulePage({
   };
 
   const handleAddChore = () => {
+    if (!isAdmin) {
+      setError("Only the household creator can add chores.");
+      return;
+    }
     if (!newChore.name.trim()) return;
 
     const id = Math.max(0, ...chores.map((c) => c.id)) + 1;
@@ -159,6 +198,11 @@ export default function GeneratedSchedulePage({
   };
 
   const handleAccept = async () => {
+    if (!isAdmin) {
+      setError("Only the household creator can save and finalize the schedule.");
+      return;
+    }
+
     setSaving(true);
     setError("");
     
@@ -203,6 +247,138 @@ export default function GeneratedSchedulePage({
       setGeneratingTickets(false);
     }
   };
+
+  // Show loading screen when checking admin status
+  if (checkingAdmin) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background: "linear-gradient(to bottom right, #faf5ff, #f3e8ff)",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "16px",
+          gap: "24px",
+        }}
+      >
+        <div
+          style={{
+            width: "64px",
+            height: "64px",
+            borderRadius: "50%",
+            background: "linear-gradient(45deg, #4c1d95, #7c3aed, #e9d5ff, #f3e8ff, #7c3aed, #4c1d95)",
+            backgroundSize: "300% 300%",
+            animation: "rotate 4s linear infinite",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            boxShadow: "3px 3px 10px 1px rgba(76, 29, 149, 0.5)",
+          }}
+        >
+          <Sparkles 
+            style={{ 
+              width: "32px", 
+              height: "32px", 
+              color: "white",
+              animation: "pulse 1.5s ease-in-out infinite"
+            }} 
+          />
+        </div>
+        <p style={{ color: "#6b7280", fontSize: "16px", textAlign: "center" }}>
+          Checking permissions...
+        </p>
+        <style>{`
+          @keyframes rotate {
+            0% {
+              background-position: 0% 50%;
+            }
+            50% {
+              background-position: 100% 50%;
+            }
+            100% {
+              background-position: 0% 50%;
+            }
+          }
+          @keyframes pulse {
+            0%, 100% {
+              opacity: 1;
+              transform: scale(1);
+            }
+            50% {
+              opacity: 0.7;
+              transform: scale(0.95);
+            }
+          }
+        `}</style>
+      </div>
+    );
+  }
+
+  // Show error page if not admin
+  if (!isAdmin) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background: "linear-gradient(to bottom right, #faf5ff, #f3e8ff)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "16px",
+        }}
+      >
+        <Card style={{
+          borderColor: "#fecaca",
+          boxShadow: "0 20px 25px rgba(0, 0, 0, 0.1)",
+          maxWidth: "500px",
+          width: "100%",
+        }}>
+          <CardContent style={{ padding: "32px", textAlign: "center" }}>
+            <div
+              style={{
+                width: "64px",
+                height: "64px",
+                backgroundColor: "#fee2e2",
+                borderRadius: "50%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                margin: "0 auto 16px",
+              }}
+            >
+              <AlertCircle style={{ width: "32px", height: "32px", color: "#dc2626" }} />
+            </div>
+            <h2
+              style={{
+                color: "#111827",
+                fontSize: "24px",
+                fontWeight: "600",
+                marginBottom: "12px",
+              }}
+            >
+              Access Restricted
+            </h2>
+            <p style={{ color: "#6b7280", fontSize: "16px", marginBottom: "24px" }}>
+              Only the household creator can view and edit the generated schedule.
+              Please wait for the creator to generate and finalize the chores.
+            </p>
+            <Button
+              onClick={onAdjust}
+              style={{
+                backgroundColor: "#7c3aed",
+                color: "white",
+                padding: "12px 24px",
+              }}
+            >
+              Go Back
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   // Show loading screen when generating tickets
   if (generatingTickets) {
@@ -318,8 +494,7 @@ export default function GeneratedSchedulePage({
           />
         </div>
         <p style={{ color: "#6b7280", fontSize: "16px", textAlign: "center" }}>
-          Generating your household schedule based on everyone's
-          preferences...
+          Generating your household schedule based on everyone's preferences...
         </p>
         <style>{`
           @keyframes rotate {
@@ -409,8 +584,12 @@ export default function GeneratedSchedulePage({
               color: "#b91c1c",
               borderRadius: "8px",
               fontSize: "14px",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
             }}
           >
+            <AlertCircle style={{ width: "18px", height: "18px" }} />
             {error}
           </div>
         )}
@@ -534,24 +713,26 @@ export default function GeneratedSchedulePage({
               >
                 Your Weekly Schedule
               </h3>
-              <Button
-                onClick={() => setShowAddForm(!showAddForm)}
-                style={{
-                  backgroundColor: "#7c3aed",
-                  color: "white",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                  padding: "8px 16px",
-                }}
-              >
-                <Plus style={{ width: "16px", height: "16px" }} />
-                Add Chore
-              </Button>
+              {isAdmin && (
+                <Button
+                  onClick={() => setShowAddForm(!showAddForm)}
+                  style={{
+                    backgroundColor: "#7c3aed",
+                    color: "white",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    padding: "8px 16px",
+                  }}
+                >
+                  <Plus style={{ width: "16px", height: "16px" }} />
+                  Add Chore
+                </Button>
+              )}
             </div>
 
-            {/* Add Chore Form */}
-            {showAddForm && (
+            {/* Add Chore Form - Only show for admin */}
+            {isAdmin && showAddForm && (
               <div
                 style={{
                   padding: "16px",
@@ -808,7 +989,7 @@ export default function GeneratedSchedulePage({
                   }}
                 >
                   {editingId === chore.id ? (
-                    // Edit Mode
+                    // Edit Mode - Only for admin
                     <div
                       style={{
                         display: "flex",
@@ -1082,42 +1263,45 @@ export default function GeneratedSchedulePage({
                                 </p>
                               )}
                             </div>
-                            <div style={{ display: "flex", gap: "8px" }}>
-                              <button
-                                onClick={() => handleEdit(chore.id)}
-                                style={{
-                                  background: "none",
-                                  border: "none",
-                                  cursor: "pointer",
-                                  padding: "4px",
-                                }}
-                              >
-                                <Edit2
+                            {/* Edit/Delete buttons - Only for admin */}
+                            {isAdmin && (
+                              <div style={{ display: "flex", gap: "8px" }}>
+                                <button
+                                  onClick={() => handleEdit(chore.id)}
                                   style={{
-                                    width: "18px",
-                                    height: "18px",
-                                    color: "#7c3aed",
+                                    background: "none",
+                                    border: "none",
+                                    cursor: "pointer",
+                                    padding: "4px",
                                   }}
-                                />
-                              </button>
-                              <button
-                                onClick={() => handleDelete(chore.id)}
-                                style={{
-                                  background: "none",
-                                  border: "none",
-                                  cursor: "pointer",
-                                  padding: "4px",
-                                }}
-                              >
-                                <Trash2
+                                >
+                                  <Edit2
+                                    style={{
+                                      width: "18px",
+                                      height: "18px",
+                                      color: "#7c3aed",
+                                    }}
+                                  />
+                                </button>
+                                <button
+                                  onClick={() => handleDelete(chore.id)}
                                   style={{
-                                    width: "18px",
-                                    height: "18px",
-                                    color: "#ef4444",
+                                    background: "none",
+                                    border: "none",
+                                    cursor: "pointer",
+                                    padding: "4px",
                                   }}
-                                />
-                              </button>
-                            </div>
+                                >
+                                  <Trash2
+                                    style={{
+                                      width: "18px",
+                                      height: "18px",
+                                      color: "#ef4444",
+                                    }}
+                                  />
+                                </button>
+                              </div>
+                            )}
                           </div>
 
                           <div
@@ -1220,13 +1404,13 @@ export default function GeneratedSchedulePage({
               fontSize: "16px",
             }}
           >
-            I'd like to regenerate
+            I&apos;d like to regenerate
           </Button>
           <Button
             onClick={handleAccept}
-            disabled={saving || generatingTickets || chores.length === 0}
+            disabled={!isAdmin || saving || generatingTickets || chores.length === 0}
             style={{
-              backgroundColor: (saving || generatingTickets) ? "#9ca3af" : "#6d28d9",
+              backgroundColor: (!isAdmin || saving || generatingTickets) ? "#9ca3af" : "#6d28d9",
               color: "white",
               padding: "24px",
               display: "flex",
@@ -1234,8 +1418,8 @@ export default function GeneratedSchedulePage({
               justifyContent: "center",
               gap: "8px",
               fontSize: "16px",
-              opacity: (saving || generatingTickets || chores.length === 0) ? 0.6 : 1,
-              cursor: (saving || generatingTickets || chores.length === 0) ? "not-allowed" : "pointer",
+              opacity: (!isAdmin || saving || generatingTickets || chores.length === 0) ? 0.6 : 1,
+              cursor: (!isAdmin || saving || generatingTickets || chores.length === 0) ? "not-allowed" : "pointer",
             }}
           >
             {saving ? (

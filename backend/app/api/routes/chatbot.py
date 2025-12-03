@@ -57,6 +57,42 @@ def cleanup_expired_actions():
     return len(expired_ids)
 
 
+def get_user_chores(db: Session, user_id: str, house_id: str) -> List[Dict[str, Any]]:
+    """Get all pending chores for a user"""
+    now = datetime.utcnow()
+
+    tickets = (
+        db.query(Ticket, Chore)
+        .join(Chore, Ticket.chore_id == Chore.id)
+        .filter(
+            Ticket.assigned_user_id == user_id,
+            Chore.house_id == house_id,
+            Ticket.status == "Pending",
+            Ticket.due_date >= now,
+        )
+        .order_by(Ticket.due_date)
+        .all()
+    )
+
+    return [
+        {
+            "ticket_id": ticket.id,
+            "chore_name": chore.name,
+            "chore_description": chore.description,
+            "due_date": ticket.due_date.strftime("%Y-%m-%d")
+            if ticket.due_date
+            else None,
+            "due_date_display": ticket.due_date.strftime("%b %d, %Y")
+            if ticket.due_date
+            else "TBD",
+            "duration": chore.duration,
+            "difficulty": chore.difficulty_level,
+            "priority": chore.chore_priority,
+        }
+        for ticket, chore in tickets
+    ]
+
+
 def get_fairness_data(db: Session, house_id: str) -> Dict[str, Any]:
     """Get fairness report data for AI decision making"""
     now = datetime.utcnow()
@@ -81,12 +117,21 @@ def get_fairness_data(db: Session, house_id: str) -> Dict[str, Any]:
 
         total_duration = sum(chore.duration for _, chore in tickets)
 
+        # Get user preferences
+        user_pref = (
+            db.query(UserPreference).filter(UserPreference.user_id == user.id).first()
+        )
+        day_availability = user_pref.day_availability if user_pref else []
+        time_availability = user_pref.time_availability if user_pref else []
+
         user_workloads.append(
             {
                 "user_id": user.id,
                 "user_name": user.name,
                 "total_duration_minutes": total_duration,
                 "ticket_count": len(tickets),
+                "day_availability": day_availability,
+                "time_availability": time_availability,
             }
         )
 
@@ -94,10 +139,10 @@ def get_fairness_data(db: Session, house_id: str) -> Dict[str, Any]:
     return {"users": user_workloads, "total_users": len(user_workloads)}
 
 
-def find_best_swap_candidate(
+def find_best_reassignment_candidate(
     db: Session, ticket_id: str, requester_id: str, house_id: str
 ) -> Dict[str, Any]:
-    """Find the best person to swap with based on fairness and preferences"""
+    """Find the best person to reassign a chore to based on fairness and preferences"""
 
     ticket_data = (
         db.query(Ticket, Chore)
@@ -113,19 +158,33 @@ def find_best_swap_candidate(
 
     # Verify the ticket belongs to the requester
     if ticket.assigned_user_id != requester_id:
-        return {"error": "You can only swap your own chores"}
+        return {"error": "You can only reassign your own chores"}
 
     fairness_data = get_fairness_data(db, house_id)
 
     # Check if there are other users in the house
     if fairness_data["total_users"] <= 1:
-        return {"error": "No other users in household to swap with"}
+        return {"error": "No other users in household to reassign to"}
+
+    # Get the due date day of week
+    due_day = ticket.due_date.strftime("%A") if ticket.due_date else None
 
     candidates = []
     for user_data in fairness_data["users"]:
         if user_data["user_id"] == requester_id:
             continue
 
+        # Check if user is available on the due date
+        is_available = True
+        availability_note = "Available"
+        if due_day and user_data["day_availability"]:
+            if due_day not in user_data["day_availability"]:
+                is_available = False
+                availability_note = f"Not available on {due_day}"
+            else:
+                availability_note = f"Available on {due_day}"
+
+        # Get user's preference for this chore type
         user_pref = (
             db.query(UserPreference)
             .filter(UserPreference.user_id == user_data["user_id"])
@@ -136,45 +195,171 @@ def find_best_swap_candidate(
         if user_pref and user_pref.chore_preferences:
             chore_preference = user_pref.chore_preferences.get(chore.name, "neutral")
 
-        preference_score = {"dont mind": 3, "neutral": 2, "prefer to avoid": 1}.get(
-            chore_preference, 2
-        )
+        preference_score = {
+            "dont mind": 3,
+            "like": 3,
+            "neutral": 2,
+            "prefer to avoid": 1,
+            "dislike": 1,
+        }.get(chore_preference.lower(), 2)
 
-        # Handle edge case where all users have 0 workload
+        # Calculate workload score (lower workload = higher score)
         max_workload = max(
             [u["total_duration_minutes"] for u in fairness_data["users"]]
         )
         if max_workload == 0:
-            workload_score = 1.0  # Equal score if no one has work
+            workload_score = 1.0
         else:
             workload_score = (
                 max_workload - user_data["total_duration_minutes"] + 1
             ) / (max_workload + 1)
 
-        suitability = (preference_score * 0.4) + (workload_score * 0.6)
+        # Calculate availability score
+        availability_score = 1.0 if is_available else 0.3
+
+        # Combined suitability score
+        suitability = (
+            (preference_score * 0.3)
+            + (workload_score * 0.4)
+            + (availability_score * 0.3)
+        )
 
         candidates.append(
             {
                 "user_id": user_data["user_id"],
                 "user_name": user_data["user_name"],
-                "current_workload": user_data["total_duration_minutes"],
+                "current_workload_minutes": user_data["total_duration_minutes"],
+                "current_chore_count": user_data["ticket_count"],
                 "chore_preference": chore_preference,
+                "is_available": is_available,
+                "availability_note": availability_note,
+                "day_availability": user_data["day_availability"],
                 "suitability_score": round(suitability, 2),
             }
         )
 
+    # Sort by suitability score (highest first)
     candidates.sort(key=lambda x: x["suitability_score"], reverse=True)
 
     if not candidates:
         return {"error": "No suitable candidates found"}
 
     return {
+        "ticket_id": ticket_id,
         "chore_name": chore.name,
+        "chore_description": chore.description,
         "chore_duration": chore.duration,
         "chore_difficulty": chore.difficulty_level,
-        "due_date": ticket.due_date.isoformat() if ticket.due_date else None,
+        "due_date": ticket.due_date.strftime("%Y-%m-%d") if ticket.due_date else None,
+        "due_date_display": ticket.due_date.strftime("%b %d, %Y")
+        if ticket.due_date
+        else "TBD",
         "candidates": candidates,
     }
+
+
+# Define 5 dummy tools
+DUMMY_TOOLS = {
+    "get_my_chores": {
+        "name": "get_my_chores",
+        "description": "Get the user's upcoming chores and tasks",
+        "parameters": {},
+    },
+    "reassign_chores": {
+        "name": "reassign_chores",
+        "description": "Reassign or reschedule chores for a specific date",
+        "parameters": {"date": "string", "chore_ids": "list"},
+    },
+    "check_fairness": {
+        "name": "check_fairness",
+        "description": "Check workload fairness across household members",
+        "parameters": {},
+    },
+    "swap_chore": {
+        "name": "swap_chore",
+        "description": "Swap a chore with another household member",
+        "parameters": {"chore_id": "string", "reason": "string"},
+    },
+    "schedule_help": {
+        "name": "schedule_help",
+        "description": "Get help with scheduling and managing chore assignments",
+        "parameters": {"query": "string"},
+    },
+}
+
+
+def dummy_tool_get_my_chores(user_id: str, house_id: str) -> Dict[str, Any]:
+    """Dummy tool that returns sample chore data"""
+    return {
+        "status": "success",
+        "chores": [
+            {
+                "id": "chore1",
+                "name": "Clean Kitchen",
+                "due_date": "2024-01-15",
+                "duration": 30,
+            },
+            {
+                "id": "chore2",
+                "name": "Take Out Trash",
+                "due_date": "2024-01-16",
+                "duration": 10,
+            },
+        ],
+        "total_chores": 2,
+    }
+
+
+def dummy_tool_reassign_chores(date: str, chore_ids: list) -> Dict[str, Any]:
+    """Dummy tool for reassigning chores"""
+    return {
+        "status": "success",
+        "message": f"Successfully reassigned {len(chore_ids)} chore(s) to {date}",
+        "reassigned_chores": chore_ids,
+    }
+
+
+def dummy_tool_check_fairness(house_id: str) -> Dict[str, Any]:
+    """Dummy tool for checking fairness"""
+    return {
+        "status": "success",
+        "fairness_score": 0.85,
+        "distribution": [
+            {"user": "User1", "workload": 120, "percentage": 30},
+            {"user": "User2", "workload": 100, "percentage": 25},
+        ],
+    }
+
+
+def dummy_tool_swap_chore(chore_id: str, reason: str) -> Dict[str, Any]:
+    """Dummy tool for swapping chores"""
+    return {
+        "status": "success",
+        "message": f"Swap request created for chore {chore_id}",
+        "swap_id": "swap_12345",
+    }
+
+
+def dummy_tool_schedule_help(query: str) -> Dict[str, Any]:
+    """Dummy tool for scheduling help"""
+    return {
+        "status": "success",
+        "suggestions": [
+            "You have 3 chores due this week",
+            "Consider spacing them evenly throughout the week",
+            "You can swap with roommates if needed",
+        ],
+    }
+
+
+# Tool execution mapper
+TOOL_EXECUTORS = {
+    "get_my_chores": dummy_tool_get_my_chores,
+    "reassign_chores": dummy_tool_reassign_chores,
+    "check_fairness": dummy_tool_check_fairness,
+    "swap_chore": dummy_tool_swap_chore,
+    "schedule_help": dummy_tool_schedule_help,
+}
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -184,9 +369,12 @@ def chat_with_ai(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Main chatbot endpoint - AI analyzes intent and proposes actions but doesn't execute without approval
+    Main chatbot endpoint with reassign chore workflow:
+    1. First LLM call identifies intent and extracts chore details
+    2. If reassign intent, fetch user's chores and fairness data
+    3. AI recommends best candidate with reasoning
+    4. User can approve or reject
     """
-
     if not current_user.house_id:
         return ChatResponse(
             response="You need to join a household first to use the AI assistant for chore management.",
@@ -201,203 +389,279 @@ def chat_with_ai(
     try:
         client = get_gemini_client()
 
-        # Build context about user's current situation
-        my_tickets = (
-            db.query(Ticket, Chore)
-            .join(Chore, Ticket.chore_id == Chore.id)
-            .filter(
-                Ticket.assigned_user_id == current_user.id,
-                Ticket.status == "Pending",
-                Ticket.due_date >= datetime.utcnow(),
-            )
-            .limit(10)
-            .all()
-        )
+        # Get user's current chores for context
+        user_chores = get_user_chores(db, current_user.id, current_user.house_id)
+        chores_context = json.dumps(user_chores, indent=2)
 
-        chores_context = json.dumps(
-            [
-                {
-                    "ticket_id": ticket.id,
-                    "chore_name": chore.name,
-                    "due_date": ticket.due_date.isoformat()
-                    if ticket.due_date
-                    else None,
-                    "duration": chore.duration,
-                    "difficulty": chore.difficulty_level,
-                    "priority": chore.chore_priority,
-                    "notes": chore.notes,
-                }
-                for ticket, chore in my_tickets
-            ],
-            indent=2,
-        )
+        # STEP 1: Intent Detection - Identify what the user wants
+        intent_prompt = f"""
+You are ChoreMate AI, a household chore management assistant.
 
-        prompt = f"""
-You are ChoreMate AI, a helpful household chore management assistant.
-
-IMPORTANT: You are an AGENT that PROPOSES actions but NEVER executes them without explicit user approval.
-
-User Information:
-- Name: {current_user.name}
-- House ID: {current_user.house_id}
-
-User's Upcoming Chores:
+User's Current Chores:
 {chores_context}
-
-Available Intents/Tools:
-1. "request_swap" - User wants to swap a chore (REQUIRES APPROVAL)
-2. "get_my_chores" - User asks about their chores (NO APPROVAL NEEDED)
-3. "get_fairness_report" - User asks about workload distribution (NO APPROVAL NEEDED)
-4. "general_query" - General questions or conversation (NO APPROVAL NEEDED)
 
 User Query: "{message.message}"
 
-TASK:
-Analyze the user's query and determine:
-1. What is their intent?
-2. What parameters can you extract?
-3. How confident are you? (0.0 to 1.0)
-4. What's your reasoning?
-5. What friendly message should we show them?
+TASK: Analyze the user's query and determine their intent.
 
-IMPORTANT RULES:
-- If intent is "request_swap", you MUST identify the ticket_id from the context
-- If you're not sure which chore they mean, ask for clarification (use "general_query" with low confidence)
-- Extract the reason for swapping if mentioned
-- Be conversational and helpful in your user_message
+Available Intents:
+1. "reassign_chore" - User wants to reassign/transfer a chore to someone else
+2. "get_my_chores" - User wants to see their upcoming chores
+3. "general_query" - General questions or conversation
 
-Return your analysis in the specified JSON structure.
+If the intent is "reassign_chore", you MUST extract:
+- "chore_name": The name of the chore they want to reassign (match from their chores list)
+- "ticket_id": The ticket_id from the chores list (if you can identify which chore)
+- "reason": Why they want to reassign (if mentioned)
+
+Return JSON with:
+{{
+    "intent": "reassign_chore" | "get_my_chores" | "general_query",
+    "confidence": 0.0-1.0,
+    "chore_name": "string or null",
+    "ticket_id": "string or null",
+    "reason": "string or null",
+    "clarification_needed": true/false,
+    "clarification_message": "string if clarification needed"
+}}
+
+IMPORTANT: If user mentions a chore but you can't match it exactly, set clarification_needed=true.
 """
 
-        response = client.models.generate_content(
+        intent_response = client.models.generate_content(
             model="gemini-2.0-flash-exp",
-            contents=prompt,
+            contents=intent_prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
-                response_schema=AIIntentAnalysis.model_json_schema(),
-                thinking_config=types.ThinkingConfig(include_thoughts=True),
             ),
         )
 
-        intent_analysis = AIIntentAnalysis.model_validate_json(response.text)
+        intent_data = json.loads(intent_response.text)
+        detected_intent = intent_data.get("intent", "general_query")
 
-        # Now handle based on intent
-        proposed_action = None
-        executed_action = None
-        ai_response = intent_analysis.user_message
+        # Handle reassign chore intent
+        if detected_intent == "reassign_chore":
+            ticket_id = intent_data.get("ticket_id")
+            chore_name = intent_data.get("chore_name")
+            reason = intent_data.get("reason", "User requested reassignment")
 
-        # Actions that require approval
-        if intent_analysis.intent == "request_swap":
-            ticket_id = intent_analysis.parameters.get("ticket_id")
-            reason = intent_analysis.parameters.get("reason", "Requested by user")
-
-            if not ticket_id:
-                ai_response = (
-                    "I understand you want to swap a chore, but I couldn't identify which one. Could you tell me which chore you'd like to swap? Here are your upcoming chores:\n\n"
-                    + "\n".join(
-                        [
-                            f"- {chore.name} (Due: {ticket.due_date.strftime('%b %d') if ticket.due_date else 'TBD'})"
-                            for ticket, chore in my_tickets
-                        ]
-                    )
-                )
-            else:
-                # Find best candidate
-                swap_analysis = find_best_swap_candidate(
-                    db, ticket_id, current_user.id, current_user.house_id
+            # If clarification needed, ask user
+            if intent_data.get("clarification_needed") or not ticket_id:
+                chores_list = "\n".join(
+                    [
+                        f"• **{c['chore_name']}** - Due: {c['due_date_display']} ({c['duration']} min)"
+                        for c in user_chores
+                    ]
                 )
 
-                if "error" in swap_analysis:
-                    # Handle specific errors
-                    ai_response = f"Sorry, I couldn't process the swap request: {swap_analysis['error']}"
-                elif swap_analysis.get("candidates"):
-                    best_candidate = swap_analysis["candidates"][0]
-                    action_id = str(uuid.uuid4())
-
-                    # Store pending action
-                    pending_actions[action_id] = {
-                        "type": "swap_request",
-                        "ticket_id": ticket_id,
-                        "requester_id": current_user.id,
-                        "target_user_id": best_candidate["user_id"],
-                        "reason": reason,
-                        "swap_analysis": swap_analysis,
-                        "house_id": current_user.house_id,
-                        "created_at": datetime.utcnow().isoformat(),
-                    }
-
-                    # Create proposed action
-                    proposed_action = ProposedAction(
-                        action_id=action_id,
-                        action_type="swap_request",
-                        title=f"Swap '{swap_analysis['chore_name']}' with {best_candidate['user_name']}",
-                        description=f"I'll send a swap request to {best_candidate['user_name']} for the chore '{swap_analysis['chore_name']}' (due {swap_analysis.get('due_date', 'TBD')}).",
-                        details={
-                            "chore_name": swap_analysis["chore_name"],
-                            "chore_duration": swap_analysis["chore_duration"],
-                            "chore_difficulty": swap_analysis.get("chore_difficulty"),
-                            "due_date": swap_analysis.get("due_date"),
-                            "target_user": best_candidate["user_name"],
-                            "target_workload": best_candidate["current_workload"],
-                            "their_preference": best_candidate["chore_preference"],
-                            "suitability_score": best_candidate["suitability_score"],
-                            "all_candidates": swap_analysis["candidates"][:3],  # Top 3
-                        },
-                        ai_reasoning=f"{best_candidate['user_name']} is the best match because they have {best_candidate['current_workload']} minutes of chores (lighter workload) and their preference for '{swap_analysis['chore_name']}' is '{best_candidate['chore_preference']}'. Suitability score: {best_candidate['suitability_score']}/3.0",
-                        requires_approval=True,
+                if not user_chores:
+                    return ChatResponse(
+                        response="You don't have any pending chores to reassign! 🎉",
+                        intent="reassign_chore",
+                        proposed_action=None,
+                        executed_action=None,
+                        conversation_id=conversation_id,
                     )
 
-                    # Build alternative candidates string if there are more
-                    alternatives_str = ""
-                    if len(swap_analysis["candidates"]) > 1:
-                        alternatives = swap_analysis["candidates"][1:3]  # Next 2 best
-                        alternatives_str = "\n\n**Other options:**\n" + "\n".join(
-                            [
-                                f"• {c['user_name']} (workload: {c['current_workload']}min, preference: {c['chore_preference']}, score: {c['suitability_score']})"
-                                for c in alternatives
-                            ]
-                        )
+                return ChatResponse(
+                    response=f"I'd be happy to help you reassign a chore! Which one would you like to reassign?\n\n{chores_list}\n\nPlease tell me the name of the chore you want to reassign.",
+                    intent="reassign_chore",
+                    proposed_action=None,
+                    executed_action=None,
+                    conversation_id=conversation_id,
+                )
 
-                    ai_response = f"I've analyzed your request to swap **'{swap_analysis['chore_name']}'** (duration: {swap_analysis['chore_duration']} min, difficulty: {swap_analysis.get('chore_difficulty', 'N/A')}).\n\nBased on fairness and preferences, I recommend sending the request to **{best_candidate['user_name']}**.\n\n📊 **Why {best_candidate['user_name']}?**\n• Current workload: {best_candidate['current_workload']} minutes\n• Their preference for this chore: *{best_candidate['chore_preference']}*\n• Match score: **{best_candidate['suitability_score']}/3.0**{alternatives_str}\n\n✅ **Approve** to send the swap request, or ❌ **Reject** to cancel."
-                else:
-                    ai_response = "I couldn't find a suitable person to swap this chore with based on current workloads and preferences. Would you like to see the fairness report?"
-
-        # Actions that don't require approval (informational)
-        elif intent_analysis.intent == "get_my_chores":
-            chores_list = [
-                f"- **{chore.name}** (Due: {ticket.due_date.strftime('%b %d, %I:%M %p') if ticket.due_date else 'TBD'}, {chore.duration} min, Priority: {chore.chore_priority})"
-                for ticket, chore in my_tickets
-            ]
-            executed_action = {"chores_count": len(my_tickets), "chores": chores_list}
-            ai_response = (
-                "Here are your upcoming chores:\n\n" + "\n".join(chores_list)
-                if chores_list
-                else "You have no pending chores! 🎉"
+            # STEP 2: Get fairness data and find best candidate
+            reassignment_analysis = find_best_reassignment_candidate(
+                db, ticket_id, current_user.id, current_user.house_id
             )
 
-        elif intent_analysis.intent == "get_fairness_report":
-            fairness = get_fairness_data(db, current_user.house_id)
-            report_lines = [
-                f"- **{u['user_name']}**: {u['total_duration_minutes']} minutes ({u['ticket_count']} chores)"
-                for u in fairness["users"]
-            ]
-            executed_action = fairness
-            ai_response = (
-                "Here's your household workload distribution for the next 2 weeks:\n\n"
-                + "\n".join(report_lines)
+            if "error" in reassignment_analysis:
+                return ChatResponse(
+                    response=f"Sorry, I couldn't process the reassignment: {reassignment_analysis['error']}",
+                    intent="reassign_chore",
+                    proposed_action=None,
+                    executed_action=None,
+                    conversation_id=conversation_id,
+                )
+
+            if not reassignment_analysis.get("candidates"):
+                return ChatResponse(
+                    response="I couldn't find anyone available to take this chore. All other household members are either busy or unavailable.",
+                    intent="reassign_chore",
+                    proposed_action=None,
+                    executed_action=None,
+                    conversation_id=conversation_id,
+                )
+
+            best_candidate = reassignment_analysis["candidates"][0]
+
+            # STEP 3: Generate AI reasoning for the recommendation
+            reasoning_prompt = f"""
+You are ChoreMate AI. Based on the analysis below, explain WHY you recommend reassigning this chore to the suggested person.
+
+Chore Details:
+- Name: {reassignment_analysis['chore_name']}
+- Duration: {reassignment_analysis['chore_duration']} minutes
+- Difficulty: {reassignment_analysis['chore_difficulty']}/5
+- Due Date: {reassignment_analysis['due_date_display']}
+
+Best Candidate: {best_candidate['user_name']}
+- Current Workload: {best_candidate['current_workload_minutes']} minutes ({best_candidate['current_chore_count']} chores)
+- Preference for this chore: {best_candidate['chore_preference']}
+- Availability: {best_candidate['availability_note']}
+- Suitability Score: {best_candidate['suitability_score']}/1.0
+
+Other Candidates:
+{json.dumps(reassignment_analysis['candidates'][1:3], indent=2) if len(reassignment_analysis['candidates']) > 1 else "None"}
+
+Write a concise, friendly explanation (2-3 sentences) for why {best_candidate['user_name']} is the best choice.
+"""
+
+            reasoning_response = client.models.generate_content(
+                model="gemini-2.0-flash-exp",
+                contents=reasoning_prompt,
             )
 
-        return ChatResponse(
-            response=ai_response,
-            intent=intent_analysis.intent,
-            proposed_action=proposed_action,
-            executed_action=executed_action,
-            conversation_id=conversation_id,
-        )
+            ai_reasoning = reasoning_response.text.strip()
+
+            # Create pending action for approval
+            action_id = str(uuid.uuid4())
+            pending_actions[action_id] = {
+                "type": "reassign_chore",
+                "ticket_id": ticket_id,
+                "requester_id": current_user.id,
+                "target_user_id": best_candidate["user_id"],
+                "target_user_name": best_candidate["user_name"],
+                "reason": reason,
+                "reassignment_analysis": reassignment_analysis,
+                "house_id": current_user.house_id,
+                "created_at": datetime.utcnow().isoformat(),
+            }
+
+            # Build response with approval buttons
+            proposed_action = ProposedAction(
+                action_id=action_id,
+                action_type="swap_request",
+                title=f"Reassign '{reassignment_analysis['chore_name']}' to {best_candidate['user_name']}",
+                description=f"This will reassign the chore to {best_candidate['user_name']}.",
+                details={
+                    "chore_name": reassignment_analysis["chore_name"],
+                    "chore_duration": reassignment_analysis["chore_duration"],
+                    "chore_difficulty": reassignment_analysis["chore_difficulty"],
+                    "due_date": reassignment_analysis["due_date_display"],
+                    "target_user": best_candidate["user_name"],
+                    "target_workload": best_candidate["current_workload_minutes"],
+                    "target_chore_count": best_candidate["current_chore_count"],
+                    "target_preference": best_candidate["chore_preference"],
+                    "target_availability": best_candidate["availability_note"],
+                    "suitability_score": best_candidate["suitability_score"],
+                },
+                ai_reasoning=ai_reasoning,
+                requires_approval=True,
+            )
+
+            # Build alternatives section
+            alternatives = ""
+            if len(reassignment_analysis["candidates"]) > 1:
+                alt_list = reassignment_analysis["candidates"][1:3]
+                alternatives = "\n\n**Other options:**\n" + "\n".join(
+                    [
+                        f"• {c['user_name']} - Workload: {c['current_workload_minutes']}min, {c['availability_note']}, Score: {c['suitability_score']}"
+                        for c in alt_list
+                    ]
+                )
+
+            response_text = f"""I've analyzed your request to reassign **"{reassignment_analysis['chore_name']}"**.
+
+📋 **Chore Details:**
+• Duration: {reassignment_analysis['chore_duration']} minutes
+• Difficulty: {'⭐' * reassignment_analysis['chore_difficulty']}
+• Due: {reassignment_analysis['due_date_display']}
+
+👤 **Recommended: {best_candidate['user_name']}**
+• Current workload: {best_candidate['current_workload_minutes']} minutes ({best_candidate['current_chore_count']} chores)
+• Preference: {best_candidate['chore_preference']}
+• {best_candidate['availability_note']}
+• Match score: **{best_candidate['suitability_score']}/1.0**
+
+💡 **Why {best_candidate['user_name']}?**
+{ai_reasoning}{alternatives}
+
+Would you like me to reassign this chore to **{best_candidate['user_name']}**?"""
+
+            return ChatResponse(
+                response=response_text,
+                intent="reassign_chore",
+                proposed_action=proposed_action,
+                executed_action=None,
+                conversation_id=conversation_id,
+            )
+
+        # Handle get_my_chores intent
+        elif detected_intent == "get_my_chores":
+            if not user_chores:
+                return ChatResponse(
+                    response="You don't have any pending chores! 🎉 Enjoy your free time!",
+                    intent="get_my_chores",
+                    proposed_action=None,
+                    executed_action={"chores_count": 0, "chores": []},
+                    conversation_id=conversation_id,
+                )
+
+            chores_list = "\n".join(
+                [
+                    f"• **{c['chore_name']}** - Due: {c['due_date_display']} ({c['duration']} min, Difficulty: {'⭐' * c['difficulty']})"
+                    for c in user_chores
+                ]
+            )
+
+            total_time = sum(c["duration"] for c in user_chores)
+
+            return ChatResponse(
+                response=f"Here are your upcoming chores ({len(user_chores)} total, ~{total_time} minutes):\n\n{chores_list}",
+                intent="get_my_chores",
+                proposed_action=None,
+                executed_action={
+                    "chores_count": len(user_chores),
+                    "chores": user_chores,
+                },
+                conversation_id=conversation_id,
+            )
+
+        # Handle general query
+        else:
+            general_prompt = f"""
+You are ChoreMate AI, a friendly household chore management assistant.
+
+User's chores: {len(user_chores)} pending chores
+
+User query: "{message.message}"
+
+Respond helpfully and conversationally. If they're asking about chores, mention you can help them:
+- View their chores
+- Reassign chores to roommates
+- Check workload fairness
+
+Keep response concise (2-3 sentences).
+"""
+            general_response = client.models.generate_content(
+                model="gemini-2.0-flash-exp",
+                contents=general_prompt,
+            )
+
+            return ChatResponse(
+                response=general_response.text.strip(),
+                intent="general_query",
+                proposed_action=None,
+                executed_action=None,
+                conversation_id=conversation_id,
+            )
 
     except Exception as e:
+        print(f"Error in chatbot: {str(e)}")
         return ChatResponse(
-            response=f"I encountered an error: {str(e)}. Please try again or rephrase your question.",
+            response=f"I'm sorry, I encountered an error. Please try again.",
             intent="general_query",
             proposed_action=None,
             executed_action=None,
@@ -412,10 +676,8 @@ def approve_action(
     current_user: User = Depends(get_current_user),
 ):
     """
-    Execute a proposed action after user approval
+    Execute a proposed action after user approval - reassigns the chore
     """
-
-    # Clean up expired actions first
     cleanup_expired_actions()
 
     action_data = pending_actions.get(approval.action_id)
@@ -423,32 +685,28 @@ def approve_action(
     if not action_data:
         raise HTTPException(status_code=404, detail="Action not found or expired")
 
-    # Verify ownership
     if action_data["requester_id"] != current_user.id:
         raise HTTPException(status_code=403, detail="Not authorized")
 
     if not approval.approved:
-        # User rejected the action
         del pending_actions[approval.action_id]
         return ChatResponse(
-            response="Action cancelled. Is there anything else I can help you with?",
-            intent="general_query",
+            response="No problem! The chore reassignment has been cancelled. Is there anything else I can help you with?",
+            intent="reassign_chore",
             proposed_action=None,
             executed_action={"cancelled": True},
             conversation_id=approval.conversation_id,
         )
 
-    # Execute the approved action
-    if action_data["type"] == "swap_request":
-        swap_analysis = action_data["swap_analysis"]
-
-        # Verify the ticket still exists and is still assigned to the requester
+    # Execute the reassignment
+    if action_data["type"] == "reassign_chore":
         ticket = db.query(Ticket).filter(Ticket.id == action_data["ticket_id"]).first()
+
         if not ticket:
             del pending_actions[approval.action_id]
             raise HTTPException(status_code=404, detail="Ticket no longer exists")
 
-        if ticket.assigned_user_id != action_data["requester_id"]:
+        if ticket.assigned_user_id != current_user.id:
             del pending_actions[approval.action_id]
             raise HTTPException(
                 status_code=400, detail="This ticket is no longer assigned to you"
@@ -457,79 +715,41 @@ def approve_action(
         if ticket.status != "Pending":
             del pending_actions[approval.action_id]
             raise HTTPException(
-                status_code=400,
-                detail="This ticket has already been completed or cancelled",
+                status_code=400, detail="This ticket has already been completed"
             )
 
-        # Check if there's already a pending swap request for this ticket
-        existing_swap = (
-            db.query(SwapRequest)
-            .filter(
-                SwapRequest.ticket_id == action_data["ticket_id"],
-                SwapRequest.status == "Pending",
-            )
-            .first()
-        )
+        # Get chore name for notification
+        chore = db.query(Chore).filter(Chore.id == ticket.chore_id).first()
+        chore_name = chore.name if chore else "Unknown chore"
 
-        if existing_swap:
-            del pending_actions[approval.action_id]
-            raise HTTPException(
-                status_code=400,
-                detail="There's already a pending swap request for this chore",
-            )
+        # Reassign the ticket
+        old_user_id = ticket.assigned_user_id
+        ticket.assigned_user_id = action_data["target_user_id"]
 
-        best_candidate = swap_analysis["candidates"][0]
-
-        # Verify target user still exists
-        target_user = (
-            db.query(User).filter(User.id == action_data["target_user_id"]).first()
-        )
-        if not target_user:
-            del pending_actions[approval.action_id]
-            raise HTTPException(status_code=404, detail="Target user no longer exists")
-
-        # Create swap request in database
-        swap_request = SwapRequest(
-            ticket_id=action_data["ticket_id"],
-            requester_user_id=action_data["requester_id"],
-            target_user_id=action_data["target_user_id"],
-            reason=action_data["reason"],
-            status="Pending",
-            ai_analysis=swap_analysis,
-        )
-        db.add(swap_request)
-        db.commit()
-        db.refresh(swap_request)
-
-        # Create notification for target user
+        # Create notification for the new assignee
         notification = Notification(
             user_id=action_data["target_user_id"],
-            notification_type="swap_request",
-            title="Chore Swap Request",
-            message=f"{current_user.name} wants to swap the '{swap_analysis['chore_name']}' chore with you. Reason: {action_data['reason']}",
-            related_id=swap_request.id,
+            notification_type="chore_assigned",
+            title="New Chore Assigned",
+            message=f"{current_user.name} has reassigned '{chore_name}' to you.",
+            related_id=ticket.id,
             is_read=0,
         )
         db.add(notification)
         db.commit()
 
-        # Clean up pending action
         del pending_actions[approval.action_id]
 
-        executed_action = {
-            "swap_request_id": swap_request.id,
-            "target_user": best_candidate["user_name"],
-            "chore_name": swap_analysis["chore_name"],
-            "status": "sent",
-        }
-
-        ai_response = f"✅ Swap request sent to **{best_candidate['user_name']}**! They'll receive a notification and can accept or decline. I'll let you know when they respond."
-
         return ChatResponse(
-            response=ai_response,
-            intent="request_swap",
+            response=f"✅ Done! I've reassigned **'{chore_name}'** to **{action_data['target_user_name']}**. They'll receive a notification about their new chore.\n\nIs there anything else I can help you with?",
+            intent="reassign_chore",
             proposed_action=None,
-            executed_action=executed_action,
+            executed_action={
+                "reassigned": True,
+                "chore_name": chore_name,
+                "new_assignee": action_data["target_user_name"],
+                "ticket_id": action_data["ticket_id"],
+            },
             conversation_id=approval.conversation_id,
         )
 
@@ -743,7 +963,7 @@ def get_user_pending_actions(current_user: User = Depends(get_current_user)):
                     "action_type": action_data["type"],
                     "created_at": action_data["created_at"],
                     "details": {
-                        "chore_name": action_data.get("swap_analysis", {}).get(
+                        "chore_name": action_data.get("reassignment_analysis", {}).get(
                             "chore_name"
                         ),
                         "target_user_id": action_data.get("target_user_id"),
