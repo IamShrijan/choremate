@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { Users, Trophy, Star, ArrowLeft } from "lucide-react";
-import { statsAPI, userAPI, houseAPI } from "../utils/api";
+import { Users, Trophy, Star, ArrowLeft, Heart, X } from "lucide-react";
+import { statsAPI, userAPI, houseAPI, notificationsAPI } from "../utils/api";
 
 export default function RoommatesPage({ onBack }) {
     const [fairnessData, setFairnessData] = useState([]);
@@ -10,36 +10,65 @@ export default function RoommatesPage({ onBack }) {
     const [currentUser, setCurrentUser] = useState(null);
     const [totalHouseholdMinutes, setTotalHouseholdMinutes] = useState(0);
 
+    // Appreciation Modal State
+    const [showAppreciationModal, setShowAppreciationModal] = useState(false);
+    const [selectedRoommate, setSelectedRoommate] = useState(null);
+    const [appreciationMessage, setAppreciationMessage] = useState("");
+    const [sendingAppreciation, setSendingAppreciation] = useState(false);
+
+    const handleOpenAppreciation = (roommate) => {
+        setSelectedRoommate(roommate);
+        setAppreciationMessage(`Hey ${roommate.name}, thanks for being an awesome roommate! 🌟`);
+        setShowAppreciationModal(true);
+    };
+
+    const handleSendAppreciation = async () => {
+        if (!selectedRoommate || !appreciationMessage.trim()) return;
+
+        try {
+            setSendingAppreciation(true);
+            await notificationsAPI.sendAppreciation(selectedRoommate.id, appreciationMessage);
+            setShowAppreciationModal(false);
+            // Optional: Show success toast
+            alert("Appreciation sent!");
+        } catch (err) {
+            console.error("Failed to send appreciation:", err);
+            alert("Failed to send appreciation. Please try again.");
+        } finally {
+            setSendingAppreciation(false);
+        }
+    };
+
     // Fetch fairness report and leaderboard data
     useEffect(() => {
         const fetchData = async () => {
             try {
                 setLoading(true);
-                
+
                 // Get current user info
                 const userInfo = await userAPI.getMe();
                 setCurrentUser(userInfo);
-                
+
                 // Fetch fairness report
                 const fairnessReport = await statsAPI.getFairnessReport();
-                
+
                 if (fairnessReport.status === "success") {
                     setTotalHouseholdMinutes(fairnessReport.total_household_minutes || 0);
-                    
+
                     const transformed = fairnessReport.user_contributions.map((user) => ({
                         user_id: user.user_id,
                         name: user.user_name,
                         totalPlannedMinutes: user.total_planned_minutes || 0,
                         choreCount: user.chore_count || 0,
                     }));
-                    
+
                     transformed.sort((a, b) => b.totalPlannedMinutes - a.totalPlannedMinutes);
                     setFairnessData(transformed);
                 }
 
                 // Fetch leaderboard
                 const leaderboardResponse = await statsAPI.getLeaderboard();
-                
+
                 if (leaderboardResponse.status === "success") {
                     setRoommates(leaderboardResponse.leaderboard.map((entry) => ({
                         id: entry.user_id,
@@ -60,7 +89,7 @@ export default function RoommatesPage({ onBack }) {
         };
 
         fetchData();
-        
+
         // Poll every 10 seconds for live updates
         const interval = setInterval(fetchData, 10000);
         return () => clearInterval(interval);
@@ -225,10 +254,10 @@ export default function RoommatesPage({ onBack }) {
                                 // Calculate bar width as percentage of total household minutes
                                 const barPercent = (person.totalPlannedMinutes / maxScale) * 100;
                                 // Calculate percentage of total household effort
-                                const effortPercentage = maxScale > 0 
+                                const effortPercentage = maxScale > 0
                                     ? ((person.totalPlannedMinutes / maxScale) * 100).toFixed(1)
                                     : "0.0";
-                                
+
                                 return (
                                     <div key={person.user_id}>
                                         <div style={{
@@ -274,7 +303,7 @@ export default function RoommatesPage({ onBack }) {
                                                     {effortPercentage}%
                                                 </span>
                                             </div>
-                                            
+
                                             {/* Chore count label at the end of the bar */}
                                             <div style={{
                                                 position: "absolute",
@@ -308,8 +337,8 @@ export default function RoommatesPage({ onBack }) {
                             margin: 0,
                         }}>
                             <strong style={{ color: "#111827" }}>How Fairness is Calculated:</strong>{" "}
-                            The percentage represents each person's share of the total monthly effort based on chore durations. 
-                            The purple bar shows the assigned effort in minutes relative to the household total. 
+                            The percentage represents each person's share of the total monthly effort based on chore durations.
+                            The purple bar shows the assigned effort in minutes relative to the household total.
                             A balanced distribution means similar percentages across all members.
                         </p>
                     </div>
@@ -451,30 +480,172 @@ export default function RoommatesPage({ onBack }) {
                                         </span>
                                     </div>
                                 </div>
+
+
+                                {/* Actions */}
+                                {
+                                    roommate.name !== currentUser?.name && (
+                                        <button
+                                            onClick={() => handleOpenAppreciation(roommate)}
+                                            style={{
+                                                padding: "8px",
+                                                backgroundColor: "#fef3c7",
+                                                color: "#d97706",
+                                                border: "none",
+                                                borderRadius: "8px",
+                                                cursor: "pointer",
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: "6px",
+                                                fontSize: "13px",
+                                                fontWeight: "500",
+                                                transition: "background-color 0.2s",
+                                                marginLeft: "12px"
+                                            }}
+                                            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#fde68a"}
+                                            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "#fef3c7"}
+                                        >
+                                            <Heart style={{ width: "16px", height: "16px" }} />
+                                            <span>Appreciate</span>
+                                        </button>
+                                    )
+                                }
                             </div>
                         ))}
-                    {/* Description of how leaderboard is calculated */}
-                    <div style={{
-                        padding: "16px",
-                        backgroundColor: "#f9fafb",
-                        borderRadius: "8px",
-                        border: "1px solid #e5e7eb",
-                        marginBottom: "24px",
-                    }}>
-                        <p style={{
-                            fontSize: "13px",
-                            color: "#4b5563",
-                            lineHeight: "1.5",
-                            margin: 0,
+                        {/* Description of how leaderboard is calculated */}
+                        <div style={{
+                            padding: "16px",
+                            backgroundColor: "#f9fafb",
+                            borderRadius: "8px",
+                            border: "1px solid #e5e7eb",
+                            marginBottom: "24px",
                         }}>
-                            <strong style={{ color: "#111827" }}>How Leaderboard is Calculated:</strong>{" "}
-                            Each person's rating is calculated as (completed tasks ÷ total tasks assigned this week) × 5, 
-                            giving a score out of 5 stars. The leaderboard is ordered by highest rating first. 
-                            This shows who has completed the highest percentage of their assigned chores this week (Sunday to Saturday).
-                        </p>
-                    </div>
+                            <p style={{
+                                fontSize: "13px",
+                                color: "#4b5563",
+                                lineHeight: "1.5",
+                                margin: 0,
+                            }}>
+                                <strong style={{ color: "#111827" }}>How Leaderboard is Calculated:</strong>{" "}
+                                Each person's rating is calculated as (completed tasks ÷ total tasks assigned this week) × 5,
+                                giving a score out of 5 stars. The leaderboard is ordered by highest rating first.
+                                This shows who has completed the highest percentage of their assigned chores this week (Sunday to Saturday).
+                            </p>
+                        </div>
                     </div>
                 </div>
+
+                {/* Appreciation Modal */}
+                {
+                    showAppreciationModal && (
+                        <div style={{
+                            position: "fixed",
+                            top: 0,
+                            left: 0,
+                            right: 0,
+                            bottom: 0,
+                            backgroundColor: "rgba(0, 0, 0, 0.5)",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            zIndex: 50,
+                            padding: "16px"
+                        }}>
+                            <div style={{
+                                backgroundColor: "white",
+                                borderRadius: "16px",
+                                width: "100%",
+                                maxWidth: "400px",
+                                padding: "24px",
+                                boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
+                            }}>
+                                <div style={{
+                                    display: "flex",
+                                    justifyContent: "space-between",
+                                    alignItems: "center",
+                                    marginBottom: "16px"
+                                }}>
+                                    <h3 style={{ fontSize: "18px", fontWeight: "600", color: "#111827" }}>
+                                        Send Appreciation
+                                    </h3>
+                                    <button
+                                        onClick={() => setShowAppreciationModal(false)}
+                                        style={{
+                                            padding: "4px",
+                                            backgroundColor: "transparent",
+                                            border: "none",
+                                            cursor: "pointer",
+                                            color: "#6b7280"
+                                        }}
+                                    >
+                                        <X style={{ width: "20px", height: "20px" }} />
+                                    </button>
+                                </div>
+
+                                <p style={{ fontSize: "14px", color: "#4b5563", marginBottom: "16px" }}>
+                                    Send a quick thank you note to <strong>{selectedRoommate?.name}</strong>!
+                                </p>
+
+                                <textarea
+                                    value={appreciationMessage}
+                                    onChange={(e) => setAppreciationMessage(e.target.value)}
+                                    style={{
+                                        width: "100%",
+                                        height: "100px",
+                                        padding: "12px",
+                                        borderRadius: "8px",
+                                        border: "1px solid #d1d5db",
+                                        marginBottom: "16px",
+                                        fontSize: "14px",
+                                        fontFamily: "inherit",
+                                        resize: "none"
+                                    }}
+                                    placeholder="Write a nice message..."
+                                />
+
+                                <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px" }}>
+                                    <button
+                                        onClick={() => setShowAppreciationModal(false)}
+                                        style={{
+                                            padding: "8px 16px",
+                                            backgroundColor: "white",
+                                            border: "1px solid #d1d5db",
+                                            borderRadius: "8px",
+                                            color: "#374151",
+                                            fontWeight: "500",
+                                            cursor: "pointer"
+                                        }}
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={handleSendAppreciation}
+                                        disabled={sendingAppreciation || !appreciationMessage.trim()}
+                                        style={{
+                                            padding: "8px 16px",
+                                            backgroundColor: "#7c3aed",
+                                            border: "none",
+                                            borderRadius: "8px",
+                                            color: "white",
+                                            fontWeight: "500",
+                                            cursor: sendingAppreciation || !appreciationMessage.trim() ? "not-allowed" : "pointer",
+                                            opacity: sendingAppreciation || !appreciationMessage.trim() ? 0.7 : 1,
+                                            display: "flex",
+                                            alignItems: "center",
+                                            gap: "8px"
+                                        }}
+                                    >
+                                        {sendingAppreciation ? "Sending..." : (
+                                            <>
+                                                <Heart style={{ width: "16px", height: "16px" }} />
+                                                Send Love
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
             </div>
         </div>
     );

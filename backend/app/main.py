@@ -8,6 +8,7 @@ from .api.routes.auth import router as auth_router
 from .api.routes.user_preferences import router as user_preferences_router
 from .api.routes.user import router as user_router
 from .api.routes.chatbot import router as chatbot_router
+from .api.routes.notifications import router as notifications_router
 
 app = FastAPI(title="Roommate Chore Platform")
 
@@ -35,6 +36,9 @@ app.include_router(user_router)
 app.include_router(chore_router)
 app.include_router(game_router)
 app.include_router(chatbot_router)
+app.include_router(
+    notifications_router, prefix="/notifications", tags=["notifications"]
+)
 
 
 @app.get("/")
