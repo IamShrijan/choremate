@@ -13,7 +13,7 @@ export default function AIChatbotPage({ onBack }) {
 
     // Suggested tasks
     const suggestedTasks = [
-        "Reassign my chores",
+        "I'm busy this weekend, please reassign my chores",
         "Show me my upcoming chores",
         "I need help with tomorrow's chores",
     ];
