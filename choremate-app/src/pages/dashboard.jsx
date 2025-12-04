@@ -11,6 +11,7 @@ import {
     MessageSquare,
     X,
     Plus,
+    CheckCircle,
 } from "lucide-react";
 import ChoreDetailModal from "../components/ChoreDetailModal";
 import AddChoreModal from "../components/AddChoreModal";
@@ -19,7 +20,7 @@ import RoommatesPage from "./RoommatesPage";
 import AIChatbotPage from "./AIChatbotPage";
 import HouseholdChoresPage from "./HouseholdChoresPage";
 import ActivityCenter from "../components/ActivityCenter";
-import { userAPI, choresAPI, notificationsAPI } from "../utils/api";
+import { userAPI, choresAPI, notificationsAPI, statsAPI } from "../utils/api";
 
 export default function Dashboard() {
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -34,22 +35,32 @@ export default function Dashboard() {
     const [error, setError] = useState(null);
     const [notifications, setNotifications] = useState([]);
     const [unreadCount, setUnreadCount] = useState(0);
+    const [dashboardStats, setDashboardStats] = useState({
+        pending_chores_week: 0,
+        completed_chores_week: 0,
+        appreciations_month: 0
+    });
 
-    // Fetch notifications
-    const fetchNotifications = async () => {
+    // Fetch notifications and stats
+    const fetchNotificationsAndStats = async () => {
         try {
-            const data = await notificationsAPI.getNotifications();
-            setNotifications(data);
-            setUnreadCount(data.filter(n => !n.is_read).length);
+            const [notifs, stats] = await Promise.all([
+                notificationsAPI.getNotifications(),
+                statsAPI.getDashboardStats()
+            ]);
+
+            setNotifications(notifs);
+            setUnreadCount(notifs.filter(n => !n.is_read).length);
+            setDashboardStats(stats);
         } catch (err) {
-            console.error("Error fetching notifications:", err);
+            console.error("Error fetching dashboard data:", err);
         }
     };
 
     useEffect(() => {
-        fetchNotifications();
-        // Poll for notifications every minute
-        const interval = setInterval(fetchNotifications, 60000);
+        fetchNotificationsAndStats();
+        // Poll every minute
+        const interval = setInterval(fetchNotificationsAndStats, 60000);
         return () => clearInterval(interval);
     }, []);
 
@@ -167,6 +178,9 @@ export default function Dashboard() {
 
             // Update local state
             setCompletedChores([...completedChores, choreId]);
+
+            // Refresh dashboard stats to reflect the change
+            await fetchNotificationsAndStats();
 
             // Optionally refresh chores from API
             // const updatedChores = await choresAPI.getChores();
@@ -419,18 +433,35 @@ export default function Dashboard() {
                 <main style={{ flex: 1, overflow: "auto", padding: "32px" }}>
                     {currentPage === "dashboard" ? (
                         <div>
-                            {/* Stats Cards */}
+                            {/* Stats Grid */}
                             <div style={{
                                 display: "grid",
-                                gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                                gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
                                 gap: "24px",
                                 marginBottom: "32px"
                             }}>
-                                {stats.map((stat, index) => (
-                                    <StatCard key={index} {...stat} />
-                                ))}
+                                <StatCard
+                                    title="Pending Chores"
+                                    value={dashboardStats.pending_chores_week}
+                                    subtitle="This week"
+                                    icon={Clock}
+                                    color="#f59e0b"
+                                />
+                                <StatCard
+                                    title="Completed"
+                                    value={dashboardStats.completed_chores_week}
+                                    subtitle="This week"
+                                    icon={CheckCircle}
+                                    color="#10b981"
+                                />
+                                <StatCard
+                                    title="Appreciations"
+                                    value={dashboardStats.appreciations_month}
+                                    subtitle="This month"
+                                    icon={Trophy}
+                                    color="#8b5cf6"
+                                />
                             </div>
-
                             {/* Today's Chores Section */}
                             <div style={{ marginBottom: "32px" }}>
                                 <div style={{
@@ -539,9 +570,7 @@ export default function Dashboard() {
                             onBack={() => setCurrentPage("dashboard")}
                             allChores={allChores}
                             onAddChore={handleAddChore}
-                            onCompleteChore={(choreId) => {
-                                setCompletedChores([...completedChores, choreId]);
-                            }}
+                            onCompleteChore={handleCompleteChore}
                             completedChores={completedChores}
                             onRefresh={async () => {
                                 // Refetch chores after rescheduling

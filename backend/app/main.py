@@ -10,6 +10,11 @@ from .api.routes.user import router as user_router
 from .api.routes.chatbot import router as chatbot_router
 from .api.routes.notifications import router as notifications_router
 
+from .db.database import engine, Base
+
+# Create tables if they don't exist
+Base.metadata.create_all(bind=engine)
+
 app = FastAPI(title="Roommate Chore Platform")
 
 from fastapi.middleware.cors import CORSMiddleware

@@ -120,6 +120,17 @@ def send_appreciation(
     )
 
     db.add(notification)
+
+    # Also create a permanent AppreciationEvent record
+    from app.models.model import AppreciationEvent
+
+    appreciation_event = AppreciationEvent(
+        sender_id=current_user.id,
+        recipient_id=target_user.id,
+        message=request.message,
+    )
+    db.add(appreciation_event)
+
     db.commit()
 
     return {"status": "success", "message": "Appreciation sent successfully"}

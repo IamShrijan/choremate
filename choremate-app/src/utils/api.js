@@ -210,6 +210,12 @@ export const statsAPI = {
       method: 'GET',
     });
   },
+
+  getDashboardStats: async () => {
+    return apiRequest('/stats/dashboard', {
+      method: 'GET',
+    });
+  },
 };
 
 // Chatbot API functions
