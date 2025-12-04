@@ -19,7 +19,7 @@ Making household chores collaborative, fair, and actually enjoyable for shared l
    cd choremate
    ```
 
-   2. **Create and activate a virtual environment**
+2. **Create and activate a virtual environment**
    ```
    cd backend
    python -m venv .venv
@@ -31,23 +31,23 @@ Making household chores collaborative, fair, and actually enjoyable for shared l
    .venv\Scripts\activate
    ```
 
-   3. **Install dependencies**
+3. **Install dependencies**
    ```bash
    pip install -r requirements.txt
    ```
 
-   4. **Set up environment variables**
+4. **Set up environment variables**
    ```bash
    cp .env.example .env
    # Edit .env with your configuration (add GEMINI_API_KEY)
    ```
 
-   5. **Initialize the database**
+5. **Initialize the database**
    ```bash
    python create_db.py
    ```
 
-   6. **Run the FastAPI application**
+6. **Run the FastAPI application**
    ```bash
    uvicorn app.main:app --reload
    ```
@@ -63,12 +63,12 @@ Making household chores collaborative, fair, and actually enjoyable for shared l
    cd choremate-app
    ```
 
-   2. **Install dependencies**
+2. **Install dependencies**
    ```bash
    npm install
    ```
 
-   3. **Run the development server**
+3. **Run the development server**
    ```bash
    npm run dev
    ```
