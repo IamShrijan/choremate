@@ -131,3 +131,15 @@ class Notification(Base):
     )  # Reference to swap_request, ticket, etc.
     is_read = Column(Integer, default=0)  # SQLite uses 0/1 for boolean
     created_at = Column(DateTime, server_default=func.now())
+
+
+class AppreciationEvent(Base):
+    __tablename__ = "appreciation_events"
+
+    id = Column(
+        UUIDStr, primary_key=True, index=True, default=lambda: str(uuid.uuid4())
+    )
+    sender_id = Column(UUIDStr, ForeignKey("users.id"))
+    recipient_id = Column(UUIDStr, ForeignKey("users.id"))
+    message = Column(String)
+    created_at = Column(DateTime, server_default=func.now())

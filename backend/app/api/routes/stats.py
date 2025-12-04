@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any
 import math
 
-from ...models.model import User, Ticket, Chore, Appreciation
+from ...models.model import User, Ticket, Chore, Appreciation, Notification
 from ...db.database import get_db
 from ..dependencies import get_current_user
 
@@ -219,4 +219,91 @@ def get_fairness_report(
         },
         "total_household_minutes": total_household_minutes,  # NEW: Total for all users
         "user_contributions": user_contributions,
+    }
+
+
+@router.get("/dashboard")
+def get_dashboard_stats(
+    db: Session = Depends(get_db), current_user: User = Depends(get_current_user)
+):
+    """
+    Get statistics for the dashboard tiles:
+    1. Pending chores count for the current week
+    2. Completed chores count for the current week
+    3. Appreciations received for the current month
+    """
+    if not current_user.house_id:
+        # Return zeros if not in a house
+        return {
+            "pending_chores_week": 0,
+            "completed_chores_week": 0,
+            "appreciations_month": 0,
+        }
+
+    now = datetime.utcnow()
+    current_date = now.date()
+
+    # --- Week Range (Sunday to Saturday) ---
+    weekday = current_date.weekday()
+    days_back = (weekday + 1) % 7
+    week_start = datetime.combine(
+        current_date - timedelta(days=days_back), datetime.min.time()
+    )
+    week_end = week_start + timedelta(days=6, hours=23, minutes=59, seconds=59)
+
+    # --- Month Range ---
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    # Simple month end calculation (next month start - 1 second)
+    if now.month == 12:
+        next_month = now.replace(year=now.year + 1, month=1, day=1)
+    else:
+        next_month = now.replace(month=now.month + 1, day=1)
+    month_end = next_month - timedelta(seconds=1)
+
+    # 1. Pending Chores (Due this week, not completed)
+    pending_count = (
+        db.query(Ticket)
+        .join(Chore, Ticket.chore_id == Chore.id)
+        .filter(
+            Ticket.assigned_user_id == current_user.id,
+            Chore.house_id == current_user.house_id,
+            Ticket.due_date >= week_start,
+            Ticket.due_date <= week_end,
+            Ticket.status != "Completed",
+        )
+        .count()
+    )
+
+    # 2. Completed Chores (Completed this week, regardless of due date)
+    completed_count = (
+        db.query(Ticket)
+        .join(Chore, Ticket.chore_id == Chore.id)
+        .filter(
+            Ticket.assigned_user_id == current_user.id,
+            Chore.house_id == current_user.house_id,
+            Ticket.status == "Completed",
+            Ticket.completed_at >= week_start,
+            Ticket.completed_at <= week_end,
+        )
+        .count()
+    )
+
+    # 3. Appreciations (Month)
+    # Count AppreciationEvent records created this month
+    from ...models.model import AppreciationEvent
+
+    appreciations_count = (
+        db.query(AppreciationEvent)
+        .filter(
+            AppreciationEvent.recipient_id == current_user.id,
+            AppreciationEvent.created_at >= month_start,
+            AppreciationEvent.created_at <= month_end,
+        )
+        .count()
+    )
+
+    return {
+        "pending_chores_week": pending_count,
+        "completed_chores_week": completed_count,
+        "appreciations_month": appreciations_count,
     }
