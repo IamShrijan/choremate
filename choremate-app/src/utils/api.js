@@ -226,6 +226,19 @@ export const chatbotAPI = {
       body: JSON.stringify(data),
     });
   },
+  
+  approveAction: async (data) => {
+    return apiRequest('/ai-chatbot/approve-action', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+  
+  getConversations: async () => {
+    return apiRequest('/ai-chatbot/conversations', {
+      method: 'GET',
+    });
+  },
 };
 
 // Notifications API functions
