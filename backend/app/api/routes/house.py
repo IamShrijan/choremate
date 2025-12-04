@@ -188,3 +188,37 @@ def join_house(
     db.refresh(current_user)
 
     return {"status": "joined", "house_name": house.name, "house_id": house.id}
+
+
+@router.post("/leave")
+def leave_house(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """
+    Allow the current user to leave their household.
+    """
+    if not current_user.house_id:
+        raise HTTPException(
+            status_code=400, detail="You are not part of any household."
+        )
+
+    house = db.query(House).filter(House.id == current_user.house_id).first()
+    if not house:
+        # Inconsistency check: user has house_id but house doesn't exist
+        current_user.house_id = None
+        db.commit()
+        return {"status": "success", "message": "Left household (house not found)"}
+
+    # Remove user from joined_users list
+    if house.joined_users and current_user.id in house.joined_users:
+        # Create a new list to ensure SQLAlchemy detects the change
+        updated_users = [uid for uid in house.joined_users if uid != current_user.id]
+        house.joined_users = updated_users
+
+    # Clear user's house_id
+    current_user.house_id = None
+
+    db.commit()
+
+    return {"status": "success", "message": f"You have left {house.name}"}

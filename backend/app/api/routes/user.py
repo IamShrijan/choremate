@@ -141,3 +141,32 @@ def fetch_roommates(
         )
 
     return result
+
+
+from pydantic import BaseModel
+
+
+class FeedbackRequest(BaseModel):
+    message: str
+
+
+@router.post("/feedback")
+def submit_feedback(
+    request: FeedbackRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """
+    Submit user feedback.
+    Expects JSON body: {"message": "..."}
+    """
+    from ...models.model import Feedback
+
+    new_feedback = Feedback(
+        user_id=current_user.id,
+        message=request.message,
+    )
+    db.add(new_feedback)
+    db.commit()
+
+    return {"status": "success", "message": "Feedback submitted successfully"}
