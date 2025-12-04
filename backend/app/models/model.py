@@ -145,6 +145,17 @@ class AppreciationEvent(Base):
     created_at = Column(DateTime, server_default=func.now())
 
 
+class Feedback(Base):
+    __tablename__ = "feedback"
+
+    id = Column(
+        UUIDStr, primary_key=True, index=True, default=lambda: str(uuid.uuid4())
+    )
+    user_id = Column(UUIDStr, ForeignKey("users.id"))
+    message = Column(String)
+    created_at = Column(DateTime, server_default=func.now())
+
+
 class AIConversation(Base):
     """Stores all AI chatbot conversation messages for each user"""
 
