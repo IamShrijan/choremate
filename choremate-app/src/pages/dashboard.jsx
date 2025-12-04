@@ -12,12 +12,14 @@ import {
     X,
     Plus,
 } from "lucide-react";
-import { userAPI, choresAPI } from "../utils/api";
 import ChoreDetailModal from "../components/ChoreDetailModal";
 import AddChoreModal from "../components/AddChoreModal";
 import MyChoresPage from "./MyChoresPage";
 import RoommatesPage from "./RoommatesPage";
 import AIChatbotPage from "./AIChatbotPage";
+import HouseholdChoresPage from "./HouseholdChoresPage";
+import ActivityCenter from "../components/ActivityCenter";
+import { userAPI, choresAPI, notificationsAPI } from "../utils/api";
 
 export default function Dashboard() {
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -30,6 +32,26 @@ export default function Dashboard() {
     const [allChores, setAllChores] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [notifications, setNotifications] = useState([]);
+    const [unreadCount, setUnreadCount] = useState(0);
+
+    // Fetch notifications
+    const fetchNotifications = async () => {
+        try {
+            const data = await notificationsAPI.getNotifications();
+            setNotifications(data);
+            setUnreadCount(data.filter(n => !n.is_read).length);
+        } catch (err) {
+            console.error("Error fetching notifications:", err);
+        }
+    };
+
+    useEffect(() => {
+        fetchNotifications();
+        // Poll for notifications every minute
+        const interval = setInterval(fetchNotifications, 60000);
+        return () => clearInterval(interval);
+    }, []);
 
     // Fetch chores from API on component mount
     useEffect(() => {
@@ -86,8 +108,8 @@ export default function Dashboard() {
 
     const navigationItems = [
         { name: "Dashboard", icon: Home, active: currentPage === "dashboard", page: "dashboard" },
-        { name: "My Chores", icon: ListTodo, active: currentPage === "my-i", page: "my-chores" },
-        { name: "Household Chores", icon: Users, active: false, page: null },
+        { name: "My Chores", icon: ListTodo, active: currentPage === "my-chores", page: "my-chores" },
+        { name: "Household Chores", icon: Users, active: currentPage === "household-chores", page: "household-chores" },
         { name: "Roommates", icon: Users, active: currentPage === "roommates", page: "roommates" },
         { name: "AI Chatbot", icon: Trophy, active: currentPage === "ai-chatbot", page: "ai-chatbot" },
     ];
@@ -344,19 +366,46 @@ export default function Dashboard() {
                             Welcome {user.name}!
                         </h2>
 
-                        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-                            <IconButton style={{ position: "relative" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: "16px", position: "relative" }}>
+                            <IconButton
+                                onClick={() => setActivityFeedOpen(!activityFeedOpen)}
+                                style={{ position: "relative" }}
+                            >
                                 <Bell style={{ width: "20px", height: "20px" }} />
-                                <span style={{
-                                    position: "absolute",
-                                    top: "4px",
-                                    right: "4px",
-                                    width: "8px",
-                                    height: "8px",
-                                    backgroundColor: "#ef4444",
-                                    borderRadius: "50%"
-                                }} />
+                                {unreadCount > 0 && (
+                                    <span style={{
+                                        position: "absolute",
+                                        top: "4px",
+                                        right: "4px",
+                                        width: "8px",
+                                        height: "8px",
+                                        backgroundColor: "#ef4444",
+                                        borderRadius: "50%"
+                                    }} />
+                                )}
                             </IconButton>
+
+                            {activityFeedOpen && (
+                                <ActivityCenter
+                                    notifications={notifications}
+                                    onClose={() => setActivityFeedOpen(false)}
+                                    onMarkRead={(id) => {
+                                        setNotifications(prev => prev.map(n =>
+                                            n.id === id ? { ...n, is_read: true } : n
+                                        ));
+                                        setUnreadCount(prev => Math.max(0, prev - 1));
+                                    }}
+                                    onDismiss={(id) => {
+                                        setNotifications(prev => prev.filter(n => n.id !== id));
+                                        // If it was unread, decrease count
+                                        const notification = notifications.find(n => n.id === id);
+                                        if (notification && !notification.is_read) {
+                                            setUnreadCount(prev => Math.max(0, prev - 1));
+                                        }
+                                    }}
+                                />
+                            )}
+
                             <Avatar
                                 src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop"
                                 alt="JD"
@@ -450,7 +499,7 @@ export default function Dashboard() {
                                 </div>
                             </div>
 
-                            {/* All Household Chores Table */}
+                            {/* Today's Household Chores Table */}
                             <div>
                                 <div style={{
                                     display: "flex",
@@ -463,32 +512,22 @@ export default function Dashboard() {
                                         fontWeight: "600",
                                         color: "#111827"
                                     }}>
-                                        All Household Chores
+                                        Today's Household Chores
                                     </h3>
                                     <div style={{ display: "flex", gap: "8px" }}>
-                                        <button style={{
-                                            padding: "8px 16px",
-                                            backgroundColor: "white",
-                                            color: "#374151",
-                                            border: "2px solid #e5e7eb",
-                                            borderRadius: "8px",
-                                            cursor: "pointer",
-                                            fontSize: "14px",
-                                            fontWeight: "600"
-                                        }}>
-                                            Filter
-                                        </button>
-                                        <button style={{
-                                            padding: "8px 16px",
-                                            backgroundColor: "white",
-                                            color: "#374151",
-                                            border: "2px solid #e5e7eb",
-                                            borderRadius: "8px",
-                                            cursor: "pointer",
-                                            fontSize: "14px",
-                                            fontWeight: "600"
-                                        }}>
-                                            Sort
+                                        <button
+                                            onClick={() => setCurrentPage("household-chores")}
+                                            style={{
+                                                padding: "8px 16px",
+                                                backgroundColor: "#7c3aed",
+                                                color: "white",
+                                                border: "none",
+                                                borderRadius: "8px",
+                                                cursor: "pointer",
+                                                fontSize: "14px",
+                                                fontWeight: "600"
+                                            }}>
+                                            View All Household Chores
                                         </button>
                                     </div>
                                 </div>
@@ -526,6 +565,8 @@ export default function Dashboard() {
                                 }
                             }}
                         />
+                    ) : currentPage === "household-chores" ? (
+                        <HouseholdChoresPage onBack={() => setCurrentPage("dashboard")} />
                     ) : currentPage === "roommates" ? (
                         <RoommatesPage onBack={() => setCurrentPage("dashboard")} />
                     ) : currentPage === "ai-chatbot" ? (
@@ -789,11 +830,65 @@ function ChoreCard({ name, dueDate, effort, priority, onClick }) {
 
 // Chore Table Component
 function ChoreTable() {
-    const chores = [
-        { name: "Take Out Trash", assignee: "John Doe", dueDate: "Today, 8:00 PM", status: "Pending" },
-        { name: "Clean Bathroom", assignee: "Jane Smith", dueDate: "Tomorrow", status: "In Progress" },
-        { name: "Vacuum Living Room", assignee: "John Doe", dueDate: "Dec 25", status: "Completed" },
-    ];
+    const [houseChores, setHouseChores] = React.useState([]);
+    const [loading, setLoading] = React.useState(true);
+    const [error, setError] = React.useState(null);
+
+    React.useEffect(() => {
+        const fetchHouseChores = async () => {
+            try {
+                setLoading(true);
+                setError(null);
+                console.log("Fetching house chores...");
+                const response = await choresAPI.getChoresByHouse();
+                console.log("House chores response:", response);
+                console.log("Number of chores:", response?.length);
+
+                // Filter to show only today's chores
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+                const tomorrow = new Date(today);
+                tomorrow.setDate(tomorrow.getDate() + 1);
+
+                const todaysHouseChores = response.filter(chore => {
+                    const choreDate = new Date(chore.dueDate);
+                    return choreDate >= today && choreDate < tomorrow;
+                });
+
+                console.log("Today's house chores:", todaysHouseChores.length);
+                setHouseChores(todaysHouseChores);
+            } catch (err) {
+                console.error("Error fetching house chores:", err);
+                console.error("Error details:", err.message);
+                console.error("Error response:", err.response);
+                setError(`Failed to load house chores: ${err.message || 'Unknown error'}`);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchHouseChores();
+    }, []);
+
+    if (loading) {
+        return (
+            <Card>
+                <div style={{ padding: "32px", textAlign: "center", color: "#6b7280" }}>
+                    Loading house chores...
+                </div>
+            </Card>
+        );
+    }
+
+    if (error) {
+        return (
+            <Card>
+                <div style={{ padding: "32px", textAlign: "center", color: "#ef4444" }}>
+                    {error}
+                </div>
+            </Card>
+        );
+    }
 
     return (
         <Card>
@@ -808,20 +903,34 @@ function ChoreTable() {
                         </tr>
                     </thead>
                     <tbody>
-                        {chores.map((chore, index) => (
+                        {houseChores.map((chore, index) => (
                             <tr key={index} style={{ borderBottom: "1px solid #e5e7eb" }}>
-                                <td style={{ padding: "12px 16px", fontSize: "14px", color: "#111827" }}>{chore.name}</td>
-                                <td style={{ padding: "12px 16px", fontSize: "14px", color: "#6b7280" }}>{chore.assignee}</td>
-                                <td style={{ padding: "12px 16px", fontSize: "14px", color: "#6b7280" }}>{chore.dueDate}</td>
-                                <td style={{ padding: "12px 16px" }}>
+                                <td style={{ padding: "16px", fontSize: "14px", color: "#111827" }}>
+                                    {chore.choreName || chore.name}
+                                </td>
+                                <td style={{ padding: "16px", fontSize: "14px", color: "#6b7280" }}>
+                                    {chore.assignedTo || "Unassigned"}
+                                </td>
+                                <td style={{ padding: "16px", fontSize: "14px", color: "#6b7280" }}>
+                                    {chore.dueDate ? new Date(chore.dueDate).toLocaleDateString("en-US", {
+                                        month: "short",
+                                        day: "numeric",
+                                        hour: "numeric",
+                                        minute: "2-digit"
+                                    }) : "No due date"}
+                                </td>
+                                <td style={{ padding: "16px" }}>
                                     <span style={{
-                                        padding: "4px 8px",
+                                        padding: "4px 12px",
                                         borderRadius: "12px",
                                         fontSize: "12px",
-                                        backgroundColor: chore.status === "Completed" ? "#d1fae5" : "#fef3c7",
-                                        color: chore.status === "Completed" ? "#065f46" : "#92400e"
+                                        fontWeight: "500",
+                                        backgroundColor: chore.status === "Completed" ? "#d1fae5" :
+                                            chore.status === "In Progress" ? "#fef3c7" : "#fee2e2",
+                                        color: chore.status === "Completed" ? "#065f46" :
+                                            chore.status === "In Progress" ? "#92400e" : "#991b1b"
                                     }}>
-                                        {chore.status}
+                                        {chore.status || "Pending"}
                                     </span>
                                 </td>
                             </tr>

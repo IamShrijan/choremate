@@ -167,6 +167,12 @@ export const choresAPI = {
     });
   },
 
+  getChoresByHouse: async () => {
+    return apiRequest('/chores/house-chores', {
+      method: 'GET',
+    });
+  },
+
   // Mark a ticket as complete
   markComplete: async (ticketId) => {
     return apiRequest(`/chores/ticket/${ticketId}/complete`, {
@@ -198,7 +204,7 @@ export const statsAPI = {
       method: 'GET',
     });
   },
-  
+
   getLeaderboard: async () => {
     return apiRequest('/stats/leaderboard', {
       method: 'GET',
@@ -212,6 +218,34 @@ export const chatbotAPI = {
     return apiRequest('/ai-chatbot/chat', {
       method: 'POST',
       body: JSON.stringify(data),
+    });
+  },
+};
+
+// Notifications API functions
+export const notificationsAPI = {
+  getNotifications: async () => {
+    return apiRequest('/notifications/', {
+      method: 'GET',
+    });
+  },
+
+  markRead: async (notificationId) => {
+    return apiRequest(`/notifications/${notificationId}/read`, {
+      method: 'PATCH',
+    });
+  },
+
+  dismiss: async (notificationId) => {
+    return apiRequest(`/notifications/${notificationId}`, {
+      method: 'DELETE',
+    });
+  },
+
+  sendAppreciation: async (targetUserId, message) => {
+    return apiRequest('/notifications/appreciation', {
+      method: 'POST',
+      body: JSON.stringify({ target_user_id: targetUserId, message }),
     });
   },
 };
