@@ -12,6 +12,8 @@ import {
     X,
     Plus,
     CheckCircle,
+    LogOut,
+    Bot
 } from "lucide-react";
 import ChoreDetailModal from "../components/ChoreDetailModal";
 import AddChoreModal from "../components/AddChoreModal";
@@ -40,6 +42,36 @@ export default function Dashboard() {
         completed_chores_week: 0,
         appreciations_month: 0
     });
+    const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+    const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+    const [feedbackMessage, setFeedbackMessage] = useState("");
+
+    const handleSignOut = async () => {
+        try {
+            await userAPI.logout();
+            window.location.reload(); // Reload to trigger auth check and redirect to login
+        } catch (err) {
+            console.error("Logout failed:", err);
+            // Force logout anyway
+            sessionStorage.removeItem('auth_token');
+            window.location.reload();
+        }
+    };
+
+    const handleSubmitFeedback = async () => {
+        if (!feedbackMessage.trim()) return;
+        try {
+            await userAPI.submitFeedback(feedbackMessage);
+        } catch (err) {
+            console.error("Failed to submit feedback:", err);
+            // Fail silently as requested
+        }
+
+        // Always show success message to user
+        setFeedbackMessage("");
+        setShowFeedbackModal(false);
+        alert("Thank you for your feedback!");
+    };
 
     // Fetch notifications and stats
     const fetchNotificationsAndStats = async () => {
@@ -122,7 +154,7 @@ export default function Dashboard() {
         { name: "My Chores", icon: ListTodo, active: currentPage === "my-chores", page: "my-chores" },
         { name: "Household Chores", icon: Users, active: currentPage === "household-chores", page: "household-chores" },
         { name: "Roommates", icon: Users, active: currentPage === "roommates", page: "roommates" },
-        { name: "AI Chatbot", icon: Trophy, active: currentPage === "ai-chatbot", page: "ai-chatbot" },
+        { name: "ChoreMate AI", icon: Bot, active: currentPage === "ai-chatbot", page: "ai-chatbot" },
     ];
 
     // TODO: Fetch stats from API
@@ -420,14 +452,167 @@ export default function Dashboard() {
                                 />
                             )}
 
-                            <Avatar
-                                src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop"
-                                alt="JD"
-                                size="36px"
-                            />
+                            <div style={{ position: "relative" }}>
+                                <button
+                                    onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+                                    style={{
+                                        border: "none",
+                                        background: "none",
+                                        padding: 0,
+                                        cursor: "pointer",
+                                    }}
+                                >
+                                    <Avatar
+                                        src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop"
+                                        alt="JD"
+                                        size="36px"
+                                    />
+                                </button>
+
+                                {isProfileMenuOpen && (
+                                    <div style={{
+                                        position: "absolute",
+                                        top: "100%",
+                                        right: 0,
+                                        marginTop: "8px",
+                                        width: "200px",
+                                        backgroundColor: "white",
+                                        borderRadius: "8px",
+                                        boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+                                        border: "1px solid #e5e7eb",
+                                        zIndex: 50,
+                                        overflow: "hidden"
+                                    }}>
+                                        <button
+                                            onClick={() => {
+                                                setIsProfileMenuOpen(false);
+                                                setShowFeedbackModal(true);
+                                            }}
+                                            style={{
+                                                width: "100%",
+                                                textAlign: "left",
+                                                padding: "12px 16px",
+                                                backgroundColor: "white",
+                                                border: "none",
+                                                borderBottom: "1px solid #f3f4f6",
+                                                cursor: "pointer",
+                                                fontSize: "14px",
+                                                color: "#374151",
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: "8px"
+                                            }}
+                                            onMouseEnter={(e) => e.target.style.backgroundColor = "#f9fafb"}
+                                            onMouseLeave={(e) => e.target.style.backgroundColor = "white"}
+                                        >
+                                            <MessageSquare style={{ width: "16px", height: "16px" }} />
+                                            Give Feedback
+                                        </button>
+                                        <button
+                                            onClick={handleSignOut}
+                                            style={{
+                                                width: "100%",
+                                                textAlign: "left",
+                                                padding: "12px 16px",
+                                                backgroundColor: "white",
+                                                border: "none",
+                                                cursor: "pointer",
+                                                fontSize: "14px",
+                                                color: "#ef4444",
+                                                display: "flex",
+                                                alignItems: "center",
+                                                gap: "8px"
+                                            }}
+                                            onMouseEnter={(e) => e.target.style.backgroundColor = "#fef2f2"}
+                                            onMouseLeave={(e) => e.target.style.backgroundColor = "white"}
+                                        >
+                                            <LogOut style={{ width: "16px", height: "16px" }} />
+                                            Sign Out
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
                 </header>
+
+                {/* Feedback Modal */}
+                {showFeedbackModal && (
+                    <div style={{
+                        position: "fixed",
+                        inset: 0,
+                        backgroundColor: "rgba(0, 0, 0, 0.5)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        zIndex: 60
+                    }}>
+                        <div style={{
+                            backgroundColor: "white",
+                            borderRadius: "16px",
+                            padding: "24px",
+                            width: "100%",
+                            maxWidth: "500px",
+                            boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)"
+                        }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                                <h3 style={{ fontSize: "20px", fontWeight: "600", color: "#111827" }}>Give Feedback</h3>
+                                <button
+                                    onClick={() => setShowFeedbackModal(false)}
+                                    style={{ background: "none", border: "none", cursor: "pointer", color: "#6b7280" }}
+                                >
+                                    <X style={{ width: "24px", height: "24px" }} />
+                                </button>
+                            </div>
+                            <textarea
+                                value={feedbackMessage}
+                                onChange={(e) => setFeedbackMessage(e.target.value)}
+                                placeholder="Tell us what you think..."
+                                style={{
+                                    width: "100%",
+                                    height: "120px",
+                                    padding: "12px",
+                                    borderRadius: "8px",
+                                    border: "1px solid #d1d5db",
+                                    marginBottom: "16px",
+                                    resize: "vertical",
+                                    fontFamily: "inherit"
+                                }}
+                            />
+                            <div style={{ display: "flex", justifyContent: "flex-end", gap: "12px" }}>
+                                <button
+                                    onClick={() => setShowFeedbackModal(false)}
+                                    style={{
+                                        padding: "8px 16px",
+                                        borderRadius: "8px",
+                                        border: "1px solid #d1d5db",
+                                        backgroundColor: "white",
+                                        color: "#374151",
+                                        cursor: "pointer",
+                                        fontWeight: "500"
+                                    }}
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleSubmitFeedback}
+                                    disabled={!feedbackMessage.trim()}
+                                    style={{
+                                        padding: "8px 16px",
+                                        borderRadius: "8px",
+                                        border: "none",
+                                        backgroundColor: feedbackMessage.trim() ? "#7c3aed" : "#c4b5fd",
+                                        color: "white",
+                                        cursor: feedbackMessage.trim() ? "pointer" : "not-allowed",
+                                        fontWeight: "500"
+                                    }}
+                                >
+                                    Submit Feedback
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Main Dashboard Content */}
                 <main style={{ flex: 1, overflow: "auto", padding: "32px" }}>

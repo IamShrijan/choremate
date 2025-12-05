@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Users, Trophy, Star, ArrowLeft, Heart, X } from "lucide-react";
+import { Users, Trophy, Star, ArrowLeft, Heart, X, LogOut } from "lucide-react";
 import { statsAPI, userAPI, houseAPI, notificationsAPI } from "../utils/api";
 
 export default function RoommatesPage({ onBack }) {
@@ -196,6 +196,38 @@ export default function RoommatesPage({ onBack }) {
                             Roommates & Leaderboard
                         </h2>
                     </div>
+                    <button
+                        onClick={async () => {
+                            if (window.confirm("Are you sure you want to leave this household? You won't be able to access chores or stats until you join another house.")) {
+                                try {
+                                    await houseAPI.leaveHouse();
+                                    window.location.reload(); // Reload to update state/redirect
+                                } catch (err) {
+                                    console.error("Failed to leave house:", err);
+                                    alert("Failed to leave house. Please try again.");
+                                }
+                            }
+                        }}
+                        style={{
+                            padding: "8px 16px",
+                            backgroundColor: "#fee2e2",
+                            color: "#991b1b",
+                            border: "none",
+                            borderRadius: "8px",
+                            cursor: "pointer",
+                            fontSize: "14px",
+                            fontWeight: "500",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "8px",
+                            marginLeft: "auto" // Push to right
+                        }}
+                        onMouseEnter={(e) => e.target.style.backgroundColor = "#fecaca"}
+                        onMouseLeave={(e) => e.target.style.backgroundColor = "#fee2e2"}
+                    >
+                        <LogOut style={{ width: "16px", height: "16px" }} />
+                        Leave Household
+                    </button>
                 </div>
             </div>
 
