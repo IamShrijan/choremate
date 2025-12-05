@@ -1,81 +1,140 @@
 import React, { useState, useEffect } from "react";
-import { ChevronLeft, Calendar, Users as UsersIcon } from "lucide-react";
+import { ChevronLeft, ChevronRight, Users as UsersIcon } from "lucide-react";
 import { choresAPI, userAPI } from "../utils/api";
+import ChoreDetailModal from "../components/ChoreDetailModal";
 
 export default function HouseholdChoresPage({ onBack }) {
     const [houseChores, setHouseChores] = useState([]);
     const [roommates, setRoommates] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
+    const [selectedChore, setSelectedChore] = useState(null);
 
     // Filters
     const [selectedPerson, setSelectedPerson] = useState("all");
-    const [selectedDate, setSelectedDate] = useState(() => {
+    const [currentWeekStart, setCurrentWeekStart] = useState(() => {
         const today = new Date();
-        return today.toISOString().split("T")[0];
+        const day = today.getDay(); // 0 is Sunday
+        const diff = today.getDate() - day;
+        return new Date(today.setDate(diff));
     });
 
     // Fetch house chores and roommates
+    const fetchData = async () => {
+        try {
+            setLoading(true);
+            setError(null);
+
+            const [choresResponse, roommatesResponse] = await Promise.all([
+                choresAPI.getChoresByHouse(),
+                userAPI.fetchRoommates()
+            ]);
+
+            console.log("House chores:", choresResponse);
+            console.log("Roommates:", roommatesResponse);
+            setHouseChores(choresResponse);
+            setRoommates(roommatesResponse);
+        } catch (err) {
+            console.error("Error fetching data:", err);
+            setError("Failed to load household chores");
+        } finally {
+            setLoading(false);
+        }
+    };
+
     useEffect(() => {
-        const fetchData = async () => {
-            try {
-                setLoading(true);
-                setError(null);
-
-                const [choresResponse, roommatesResponse] = await Promise.all([
-                    choresAPI.getChoresByHouse(),
-                    userAPI.fetchRoommates()
-                ]);
-
-                console.log("House chores:", choresResponse);
-                console.log("Roommates:", roommatesResponse);
-                setHouseChores(choresResponse);
-                setRoommates(roommatesResponse);
-            } catch (err) {
-                console.error("Error fetching data:", err);
-                setError("Failed to load household chores");
-            } finally {
-                setLoading(false);
-            }
-        };
-
         fetchData();
     }, []);
 
-    // Filter chores based on selected person and date
-    const filteredChores = houseChores.filter(chore => {
-        // Filter by person - now using name directly
-        if (selectedPerson !== "all") {
-            // Normalize names for comparison (case-insensitive, trim whitespace)
-            const choreName = (chore.assignedTo || "").toLowerCase().trim();
-            const selectedName = selectedPerson.toLowerCase().trim();
-
-            if (choreName !== selectedName) {
-                return false;
-            }
-        }
-
-        // Filter by date
-        const choreDate = new Date(chore.dueDate);
-        const filterDate = new Date(selectedDate);
-
-        return (
-            choreDate.getDate() === filterDate.getDate() &&
-            choreDate.getMonth() === filterDate.getMonth() &&
-            choreDate.getFullYear() === filterDate.getFullYear()
-        );
+    // Generate week dates
+    const weekDates = Array.from({ length: 7 }, (_, i) => {
+        const date = new Date(currentWeekStart);
+        date.setDate(date.getDate() + i);
+        return date;
     });
 
-    const priorityColors = {
-        1: "#3b82f6", // low - blue
-        2: "#f59e0b", // medium - yellow
-        3: "#ef4444", // high - red
+    const goToPreviousWeek = () => {
+        const newDate = new Date(currentWeekStart);
+        newDate.setDate(newDate.getDate() - 7);
+        setCurrentWeekStart(newDate);
     };
 
-    const statusColors = {
-        "Completed": { bg: "#d1fae5", text: "#065f46" },
-        "In Progress": { bg: "#fef3c7", text: "#92400e" },
-        "Pending": { bg: "#fee2e2", text: "#991b1b" },
+    const goToNextWeek = () => {
+        const newDate = new Date(currentWeekStart);
+        newDate.setDate(newDate.getDate() + 7);
+        setCurrentWeekStart(newDate);
+    };
+
+    const formatDate = (date) => {
+        return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    };
+
+    const formatWeekRange = () => {
+        const start = formatDate(weekDates[0]);
+        const end = formatDate(weekDates[6]);
+        return `${start} - ${end}, ${weekDates[0].getFullYear()}`;
+    };
+
+    const isToday = (date) => {
+        const today = new Date();
+        return (
+            date.getDate() === today.getDate() &&
+            date.getMonth() === today.getMonth() &&
+            date.getFullYear() === today.getFullYear()
+        );
+    };
+
+    // Color palette for roommates
+    const roommateColors = [
+        { bg: "#dbeafe", border: "#3b82f6", text: "#1e40af" }, // Blue
+        { bg: "#dcfce7", border: "#22c55e", text: "#15803d" }, // Green
+        { bg: "#fae8ff", border: "#d946ef", text: "#86198f" }, // Fuchsia
+        { bg: "#ffedd5", border: "#f97316", text: "#9a3412" }, // Orange
+        { bg: "#f3e8ff", border: "#a855f7", text: "#6b21a8" }, // Purple
+        { bg: "#ffe4e6", border: "#f43f5e", text: "#9f1239" }, // Rose
+        { bg: "#fef9c3", border: "#eab308", text: "#854d0e" }, // Yellow
+        { bg: "#e0f2fe", border: "#0ea5e9", text: "#075985" }, // Sky
+    ];
+
+    const getRoommateColor = (name) => {
+        if (!name) return { bg: "#f3f4f6", border: "#9ca3af", text: "#374151" }; // Gray for unassigned
+
+        // Find index of roommate in the list to assign consistent color
+        const index = roommates.findIndex(r => r.name === name);
+        if (index !== -1) {
+            return roommateColors[index % roommateColors.length];
+        }
+
+        // Fallback using hash of name if not found in list
+        let hash = 0;
+        for (let i = 0; i < name.length; i++) {
+            hash = name.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        return roommateColors[Math.abs(hash) % roommateColors.length];
+    };
+
+    // Filter chores
+    const getChoresForDate = (date) => {
+        return houseChores.filter((chore) => {
+            // Date filter
+            const choreDate = new Date(chore.dueDate);
+            const isSameDate = (
+                choreDate.getDate() === date.getDate() &&
+                choreDate.getMonth() === date.getMonth() &&
+                choreDate.getFullYear() === date.getFullYear()
+            );
+
+            if (!isSameDate) return false;
+
+            // Person filter
+            if (selectedPerson !== "all") {
+                const choreName = (chore.assignedTo || "").toLowerCase().trim();
+                const selectedName = selectedPerson.toLowerCase().trim();
+                if (choreName !== selectedName) return false;
+            }
+
+            return true;
+        });
     };
 
     if (loading) {
@@ -129,13 +188,13 @@ export default function HouseholdChoresPage({ onBack }) {
                             fontWeight: "600",
                             color: "#111827",
                         }}>
-                            Household Chores
+                            Household Schedule
                         </h2>
                     </div>
                 </div>
 
-                {/* Filters */}
-                <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
+                {/* Controls Row */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     {/* Person Filter */}
                     <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                         <UsersIcon style={{ width: "16px", height: "16px", color: "#6b7280" }} />
@@ -150,9 +209,10 @@ export default function HouseholdChoresPage({ onBack }) {
                                 color: "#374151",
                                 backgroundColor: "white",
                                 cursor: "pointer",
+                                minWidth: "150px"
                             }}
                         >
-                            <option value="all">All People</option>
+                            <option value="all">All Roommates</option>
                             {roommates.map((roommate) => (
                                 <option key={roommate.user_id} value={roommate.name}>
                                     {roommate.name}
@@ -161,37 +221,56 @@ export default function HouseholdChoresPage({ onBack }) {
                         </select>
                     </div>
 
-                    {/* Date Filter */}
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                        <Calendar style={{ width: "16px", height: "16px", color: "#6b7280" }} />
-                        <input
-                            type="date"
-                            value={selectedDate}
-                            onChange={(e) => setSelectedDate(e.target.value)}
+                    {/* Week Navigation */}
+                    <div style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "16px"
+                    }}>
+                        <button
+                            onClick={goToPreviousWeek}
                             style={{
-                                padding: "8px 12px",
+                                padding: "8px",
+                                backgroundColor: "white",
                                 border: "1px solid #e5e7eb",
                                 borderRadius: "6px",
-                                fontSize: "14px",
-                                color: "#374151",
-                                backgroundColor: "white",
                                 cursor: "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
                             }}
-                        />
-                    </div>
-
-                    {/* Results count */}
-                    <div style={{
-                        marginLeft: "auto",
-                        fontSize: "14px",
-                        color: "#6b7280",
-                    }}>
-                        {filteredChores.length} chore{filteredChores.length !== 1 ? 's' : ''}
+                        >
+                            <ChevronLeft style={{ width: "16px", height: "16px" }} />
+                        </button>
+                        <h3 style={{
+                            fontSize: "16px",
+                            fontWeight: "500",
+                            color: "#374151",
+                            minWidth: "140px",
+                            textAlign: "center"
+                        }}>
+                            {formatWeekRange()}
+                        </h3>
+                        <button
+                            onClick={goToNextWeek}
+                            style={{
+                                padding: "8px",
+                                backgroundColor: "white",
+                                border: "1px solid #e5e7eb",
+                                borderRadius: "6px",
+                                cursor: "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                            }}
+                        >
+                            <ChevronRight style={{ width: "16px", height: "16px" }} />
+                        </button>
                     </div>
                 </div>
             </div>
 
-            {/* Chores Table */}
+            {/* Calendar Grid */}
             <div style={{
                 flex: 1,
                 overflow: "auto",
@@ -199,76 +278,117 @@ export default function HouseholdChoresPage({ onBack }) {
                 backgroundColor: "#f9fafb",
             }}>
                 <div style={{
-                    backgroundColor: "white",
-                    borderRadius: "12px",
-                    border: "1px solid #e5e7eb",
-                    overflow: "hidden",
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                    gap: "16px",
                 }}>
-                    <div style={{ overflowX: "auto" }}>
-                        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                            <thead>
-                                <tr style={{ borderBottom: "1px solid #e5e7eb", backgroundColor: "#f9fafb" }}>
-                                    <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280" }}>Chore</th>
-                                    <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280" }}>Assignee</th>
-                                    <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280" }}>Due Time</th>
-                                    <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280" }}>Priority</th>
-                                    <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280" }}>Status</th>
-                                    <th style={{ padding: "12px 16px", textAlign: "left", fontSize: "12px", fontWeight: "600", color: "#6b7280" }}>Effort</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {filteredChores.length === 0 ? (
-                                    <tr>
-                                        <td colSpan="6" style={{ padding: "32px", textAlign: "center", color: "#6b7280" }}>
-                                            No chores found for the selected filters
-                                        </td>
-                                    </tr>
-                                ) : (
-                                    filteredChores.map((chore, index) => (
-                                        <tr key={index} style={{ borderBottom: "1px solid #e5e7eb" }}>
-                                            <td style={{ padding: "16px", fontSize: "14px", color: "#111827", fontWeight: "500" }}>
-                                                {chore.name}
-                                            </td>
-                                            <td style={{ padding: "16px", fontSize: "14px", color: "#6b7280" }}>
-                                                {chore.assignedTo || "Unassigned"}
-                                            </td>
-                                            <td style={{ padding: "16px", fontSize: "14px", color: "#6b7280" }}>
-                                                {chore.dueDate ? new Date(chore.dueDate).toLocaleTimeString("en-US", {
-                                                    hour: "numeric",
-                                                    minute: "2-digit"
-                                                }) : "No time"}
-                                            </td>
-                                            <td style={{ padding: "16px" }}>
+                    {weekDates.map((date, index) => {
+                        const dayChores = getChoresForDate(date);
+                        const dayName = date.toLocaleDateString("en-US", { weekday: "short" });
+                        const isCurrentDay = isToday(date);
+
+                        return (
+                            <div
+                                key={index}
+                                style={{
+                                    minHeight: "200px",
+                                    borderRadius: "12px",
+                                    border: `2px solid ${isCurrentDay ? "#7c3aed" : "#e5e7eb"}`,
+                                    backgroundColor: isCurrentDay ? "#f3e8ff" : "white",
+                                }}
+                            >
+                                <div style={{
+                                    padding: "12px",
+                                    borderBottom: `1px solid ${isCurrentDay ? "#e9d5ff" : "#e5e7eb"}`,
+                                }}>
+                                    <div style={{
+                                        fontSize: "12px",
+                                        color: "#6b7280",
+                                        marginBottom: "4px",
+                                    }}>
+                                        {dayName}
+                                    </div>
+                                    <div style={{
+                                        fontSize: "20px",
+                                        fontWeight: "600",
+                                        color: isCurrentDay ? "#6b21a8" : "#111827",
+                                    }}>
+                                        {date.getDate()}
+                                    </div>
+                                </div>
+
+                                <div style={{
+                                    padding: "8px",
+                                    display: "flex",
+                                    flexDirection: "column",
+                                    gap: "8px",
+                                }}>
+                                    {dayChores.map((chore) => {
+                                        const colors = getRoommateColor(chore.assignedTo);
+                                        return (
+                                            <button
+                                                key={chore.id}
+                                                onClick={() => setSelectedChore(chore)}
+                                                style={{
+                                                    width: "100%",
+                                                    textAlign: "left",
+                                                    padding: "8px",
+                                                    borderRadius: "6px",
+                                                    backgroundColor: colors.bg,
+                                                    border: `1px solid ${colors.border}`,
+                                                    cursor: "pointer",
+                                                    transition: "all 0.2s ease",
+                                                }}
+                                                onMouseEnter={(e) => {
+                                                    e.currentTarget.style.filter = "brightness(0.95)";
+                                                }}
+                                                onMouseLeave={(e) => {
+                                                    e.currentTarget.style.filter = "none";
+                                                }}
+                                            >
                                                 <div style={{
-                                                    width: "8px",
-                                                    height: "8px",
-                                                    borderRadius: "50%",
-                                                    backgroundColor: priorityColors[chore.priority] || priorityColors[2]
-                                                }} />
-                                            </td>
-                                            <td style={{ padding: "16px" }}>
-                                                <span style={{
-                                                    padding: "4px 12px",
-                                                    borderRadius: "12px",
                                                     fontSize: "12px",
-                                                    fontWeight: "500",
-                                                    backgroundColor: statusColors[chore.status]?.bg || statusColors["Pending"].bg,
-                                                    color: statusColors[chore.status]?.text || statusColors["Pending"].text
+                                                    fontWeight: "600",
+                                                    color: "#111827",
+                                                    marginBottom: "4px",
+                                                    overflow: "hidden",
+                                                    textOverflow: "ellipsis",
+                                                    display: "-webkit-box",
+                                                    WebkitLineClamp: 2,
+                                                    WebkitBoxOrient: "vertical",
                                                 }}>
-                                                    {chore.status || "Pending"}
-                                                </span>
-                                            </td>
-                                            <td style={{ padding: "16px", fontSize: "14px", color: "#6b7280" }}>
-                                                {chore.effort || chore.duration || "-"} min
-                                            </td>
-                                        </tr>
-                                    ))
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
+                                                    {chore.name}
+                                                </div>
+                                                <div style={{
+                                                    fontSize: "11px",
+                                                    color: colors.text,
+                                                    fontWeight: "500",
+                                                    display: "flex",
+                                                    justifyContent: "space-between",
+                                                    alignItems: "center"
+                                                }}>
+                                                    <span>{chore.assignedTo || "Unassigned"}</span>
+                                                    <span>{chore.effort || chore.duration || "-"}m</span>
+                                                </div>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
+
+            {/* Chore Detail Modal */}
+            {selectedChore && (
+                <ChoreDetailModal
+                    chore={selectedChore}
+                    onClose={() => setSelectedChore(null)}
+                    onComplete={null} // Read-only view mostly, or implement complete if needed
+                    onRefresh={fetchData}
+                />
+            )}
         </div>
     );
 }
