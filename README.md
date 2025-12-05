@@ -77,14 +77,21 @@ Making household chores collaborative, fair, and actually enjoyable for shared l
 ---
 
 ### Quick Start (Running Both)
+**create a .env file for the backend and frontend**
+replace the .env.example file with .env
+verify the values in the .env file
 
 **Terminal 1 - Backend:**
 ```bash
 cd backend
 source .venv/bin/activate  # or .venv\Scripts\activate on Windows
-uvicorn app.main:app --reload**Terminal 2 - Frontend:**
+uvicorn app.main:app --reload --port <PORT>
+
+**Terminal 2 - Frontend:**
 cd choremate-app
-npm run devThen open your browser to `http://localhost:5173`
+npm i
+npm run dev
+Then open your browser to `http://localhost:5173`(Verify the port in the terminal)
 ```
 
 ---
