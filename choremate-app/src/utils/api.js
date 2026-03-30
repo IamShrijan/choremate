@@ -1,5 +1,6 @@
-// API base URL from environment variable
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+// In production: Nginx proxies /api/* → backend ALB (no absolute URL needed).
+// In local dev (npm run dev, no Nginx): set VITE_API_BASE_URL=http://localhost:8000 in .env
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
 // Helper to get auth token from localStorage
 const getAuthToken = () => {

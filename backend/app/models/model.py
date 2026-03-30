@@ -1,170 +1,185 @@
 import uuid
 
-from sqlalchemy import Column, Integer, String, ForeignKey, DateTime, JSON
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    ForeignKey,
+    Integer,
+    JSON,
+    String,
+    Text,
+)
+from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.sql import func
+from sqlalchemy.types import TypeDecorator, CHAR
 
 from ..db.database import Base
 
 
-# Use 36-char string UUIDs (xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)
-UUIDStr = String(36)
+# ---------------------------------------------------------------------------
+# Portable UUID column type
+# Uses native UUID on PostgreSQL, CHAR(36) on SQLite — transparent to app code.
+# ---------------------------------------------------------------------------
+class UUID(TypeDecorator):
+    """Platform-independent UUID type.
+    Stores as native UUID on PostgreSQL, CHAR(36) on SQLite.
+    Values always returned as plain strings.
+    """
+    impl = CHAR(36)
+    cache_ok = True
 
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(PG_UUID(as_uuid=False))
+        return dialect.type_descriptor(CHAR(36))
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return value
+        return str(value)
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return value
+        return str(value)
+
+
+def new_uuid() -> str:
+    return str(uuid.uuid4())
+
+
+# ---------------------------------------------------------------------------
+# Models
+# ---------------------------------------------------------------------------
 
 class House(Base):
     __tablename__ = "houses"
 
-    id = Column(
-        UUIDStr, primary_key=True, index=True, default=lambda: str(uuid.uuid4())
-    )
-    name = Column(String)
-    address = Column(String)
-    house_layout = Column(JSON)  # stored as JSON
-    invite_code = Column(String, unique=True, index=True)
-    joined_users = Column(JSON, default=lambda: [])  # list of user IDs
-    invited_emails = Column(JSON, default=lambda: [])  # list of invited email addresses
+    id             = Column(UUID(), primary_key=True, index=True, default=new_uuid)
+    name           = Column(String(255), nullable=False)
+    address        = Column(String(500), nullable=True)
+    house_layout   = Column(JSON, nullable=True)
+    invite_code    = Column(String(64), unique=True, index=True, nullable=True)
+    joined_users   = Column(JSON, nullable=True, default=list)
+    invited_emails = Column(JSON, nullable=True, default=list)
 
 
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(
-        UUIDStr, primary_key=True, index=True, default=lambda: str(uuid.uuid4())
-    )
-    name = Column(String)
-    email = Column(String, unique=True, index=True)
-    password = Column(String)
-    user_profile = Column(JSON)  # JSON
-    house_id = Column(UUIDStr, ForeignKey("houses.id"))
+    id           = Column(UUID(), primary_key=True, index=True, default=new_uuid)
+    name         = Column(String(255), nullable=False)
+    email        = Column(String(255), unique=True, index=True, nullable=False)
+    password     = Column(String(255), nullable=False)
+    user_profile = Column(JSON, nullable=True)
+    house_id     = Column(UUID(), ForeignKey("houses.id"), nullable=True)
 
 
 class UserPreference(Base):
     __tablename__ = "user_preferences"
 
-    id = Column(
-        UUIDStr, primary_key=True, index=True, default=lambda: str(uuid.uuid4())
-    )
-    cleanliness_level = Column(Integer)
-    time_availability = Column(
-        JSON
-    )  # e.g. ["morning", "afternoon", "evening", "night"]
-    day_availability = Column(JSON)  # e.g. ["weekday", "weekend"]
-    special_requirements = Column(String)
-    chore_preferences = Column(JSON)  # e.g. ["Cleaning", "Repair"]
-    user_id = Column(UUIDStr, ForeignKey("users.id"))
+    id                   = Column(UUID(), primary_key=True, index=True, default=new_uuid)
+    cleanliness_level    = Column(Integer, nullable=True)
+    time_availability    = Column(JSON, nullable=True)   # ["morning", "afternoon", ...]
+    day_availability     = Column(JSON, nullable=True)   # ["weekday", "weekend"]
+    special_requirements = Column(Text, nullable=True)
+    chore_preferences    = Column(JSON, nullable=True)   # {"Cleaning": "like", ...}
+    user_id              = Column(UUID(), ForeignKey("users.id"), nullable=False)
 
 
 class Chore(Base):
     __tablename__ = "chores"
 
-    id = Column(
-        UUIDStr, primary_key=True, index=True, default=lambda: str(uuid.uuid4())
-    )
-    name = Column(String)
-    description = Column(String)
-    difficulty_level = Column(Integer)  # 1-5
-    duration = Column(Integer)  # in minutes
-    chore_frequency = Column(String)  # "Daily", "Weekly", "Monthly", "One-time"
-    chore_priority = Column(Integer)  # 1-3 low medium high
-    notes = Column(String)
-    icon = Column(String, nullable=True)  # NEW: emoji / icon name
-    house_id = Column(UUIDStr, ForeignKey("houses.id"))
+    id               = Column(UUID(), primary_key=True, index=True, default=new_uuid)
+    name             = Column(String(255), nullable=False)
+    description      = Column(Text, nullable=True)
+    difficulty_level = Column(Integer, nullable=True)    # 1-5
+    duration         = Column(Integer, nullable=True)    # minutes
+    chore_frequency  = Column(String(64), nullable=True) # "Daily", "Weekly", "Monthly"
+    chore_priority   = Column(Integer, nullable=True)    # 1-3
+    notes            = Column(Text, nullable=True)
+    icon             = Column(String(16), nullable=True) # emoji
+    house_id         = Column(UUID(), ForeignKey("houses.id"), nullable=False)
 
 
 class Ticket(Base):
     __tablename__ = "tickets"
 
-    id = Column(
-        UUIDStr, primary_key=True, index=True, default=lambda: str(uuid.uuid4())
-    )
-    chore_id = Column(UUIDStr, ForeignKey("chores.id"))
-    assigned_user_id = Column(UUIDStr, ForeignKey("users.id"))
-    created_user_id = Column(UUIDStr, ForeignKey("users.id"), nullable=True)
-    status = Column(String, default="Pending")
-    due_date = Column(DateTime)
-    created_at = Column(DateTime, server_default=func.now())
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
-    completed_at = Column(DateTime, nullable=True)
+    id               = Column(UUID(), primary_key=True, index=True, default=new_uuid)
+    chore_id         = Column(UUID(), ForeignKey("chores.id"), nullable=False)
+    assigned_user_id = Column(UUID(), ForeignKey("users.id"), nullable=False)
+    created_user_id  = Column(UUID(), ForeignKey("users.id"), nullable=True)
+    status           = Column(String(64), nullable=False, default="Pending")
+    due_date         = Column(DateTime, nullable=True)
+    created_at       = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at       = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+    completed_at     = Column(DateTime, nullable=True)
 
 
 class Appreciation(Base):
     __tablename__ = "appreciations"
 
-    id = Column(
-        UUIDStr, primary_key=True, index=True, default=lambda: str(uuid.uuid4())
-    )
-    ticket_id = Column(UUIDStr, ForeignKey("tickets.id"))
-    appreciated_by = Column(UUIDStr, ForeignKey("users.id"))
-    message = Column(String)
-    created_at = Column(DateTime, server_default=func.now())
+    id             = Column(UUID(), primary_key=True, index=True, default=new_uuid)
+    ticket_id      = Column(UUID(), ForeignKey("tickets.id"), nullable=False)
+    appreciated_by = Column(UUID(), ForeignKey("users.id"), nullable=False)
+    message        = Column(Text, nullable=True)
+    created_at     = Column(DateTime, nullable=False, server_default=func.now())
 
 
 class SwapRequest(Base):
     __tablename__ = "swap_requests"
 
-    id = Column(
-        UUIDStr, primary_key=True, index=True, default=lambda: str(uuid.uuid4())
-    )
-    ticket_id = Column(UUIDStr, ForeignKey("tickets.id"))
-    requester_user_id = Column(UUIDStr, ForeignKey("users.id"))
-    target_user_id = Column(UUIDStr, ForeignKey("users.id"))
-    reason = Column(String, nullable=True)
-    status = Column(String, default="Pending")  # Pending, Accepted, Rejected
-    ai_analysis = Column(JSON, nullable=True)  # Store AI's reasoning
-    created_at = Column(DateTime, server_default=func.now())
-    responded_at = Column(DateTime, nullable=True)
+    id                = Column(UUID(), primary_key=True, index=True, default=new_uuid)
+    ticket_id         = Column(UUID(), ForeignKey("tickets.id"), nullable=False)
+    requester_user_id = Column(UUID(), ForeignKey("users.id"), nullable=False)
+    target_user_id    = Column(UUID(), ForeignKey("users.id"), nullable=False)
+    reason            = Column(Text, nullable=True)
+    status            = Column(String(64), nullable=False, default="Pending")
+    ai_analysis       = Column(JSON, nullable=True)
+    created_at        = Column(DateTime, nullable=False, server_default=func.now())
+    responded_at      = Column(DateTime, nullable=True)
 
 
 class Notification(Base):
     __tablename__ = "notifications"
 
-    id = Column(
-        UUIDStr, primary_key=True, index=True, default=lambda: str(uuid.uuid4())
-    )
-    user_id = Column(UUIDStr, ForeignKey("users.id"))
-    notification_type = Column(
-        String
-    )  # swap_request, swap_accepted, swap_rejected, etc.
-    title = Column(String)
-    message = Column(String)
-    related_id = Column(
-        UUIDStr, nullable=True
-    )  # Reference to swap_request, ticket, etc.
-    is_read = Column(Integer, default=0)  # SQLite uses 0/1 for boolean
-    created_at = Column(DateTime, server_default=func.now())
+    id                = Column(UUID(), primary_key=True, index=True, default=new_uuid)
+    user_id           = Column(UUID(), ForeignKey("users.id"), nullable=False)
+    notification_type = Column(String(64), nullable=False)
+    title             = Column(String(255), nullable=False)
+    message           = Column(Text, nullable=True)
+    related_id        = Column(UUID(), nullable=True)
+    # Fixed: was Integer(0/1) — SQLite hack. PostgreSQL has native Boolean.
+    is_read           = Column(Boolean, nullable=False, default=False)
+    created_at        = Column(DateTime, nullable=False, server_default=func.now())
 
 
 class AppreciationEvent(Base):
     __tablename__ = "appreciation_events"
 
-    id = Column(
-        UUIDStr, primary_key=True, index=True, default=lambda: str(uuid.uuid4())
-    )
-    sender_id = Column(UUIDStr, ForeignKey("users.id"))
-    recipient_id = Column(UUIDStr, ForeignKey("users.id"))
-    message = Column(String)
-    created_at = Column(DateTime, server_default=func.now())
+    id           = Column(UUID(), primary_key=True, index=True, default=new_uuid)
+    sender_id    = Column(UUID(), ForeignKey("users.id"), nullable=False)
+    recipient_id = Column(UUID(), ForeignKey("users.id"), nullable=False)
+    message      = Column(Text, nullable=True)
+    created_at   = Column(DateTime, nullable=False, server_default=func.now())
 
 
 class Feedback(Base):
     __tablename__ = "feedback"
 
-    id = Column(
-        UUIDStr, primary_key=True, index=True, default=lambda: str(uuid.uuid4())
-    )
-    user_id = Column(UUIDStr, ForeignKey("users.id"))
-    message = Column(String)
-    created_at = Column(DateTime, server_default=func.now())
+    id         = Column(UUID(), primary_key=True, index=True, default=new_uuid)
+    user_id    = Column(UUID(), ForeignKey("users.id"), nullable=False)
+    message    = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
 
 
 class AIConversation(Base):
     """Stores all AI chatbot conversation messages for each user"""
-
     __tablename__ = "ai_conversations"
 
-    id = Column(
-        UUIDStr, primary_key=True, index=True, default=lambda: str(uuid.uuid4())
-    )
-    user_id = Column(UUIDStr, ForeignKey("users.id"), nullable=False)
-    created_by = Column(String, nullable=False)  # "user" or "system"
-    content = Column(String, nullable=False)
-    created_at = Column(DateTime, server_default=func.now())
+    id         = Column(UUID(), primary_key=True, index=True, default=new_uuid)
+    user_id    = Column(UUID(), ForeignKey("users.id"), nullable=False)
+    created_by = Column(String(16), nullable=False)   # "user" or "system"
+    content    = Column(Text, nullable=False)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())

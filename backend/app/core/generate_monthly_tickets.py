@@ -51,6 +51,8 @@ For each chore, determine:
    - Respect time_availability when possible
    - Consider special_requirements (e.g., avoid physically demanding tasks for those with limitations)
 
+IMPORTANT: You MUST use the exact chore IDs and user IDs provided above. Do not invent or modify any IDs.
+
 Generate the monthly ticket assignments now.
 """
 
@@ -58,9 +60,9 @@ Generate the monthly ticket assignments now.
 class TicketAssignment(BaseModel):
     """Schema for a single ticket assignment"""
 
-    chore_id: str = Field(description="The ID of the chore")
+    chore_id: str = Field(description="The ID of the chore (must match one of the provided chore IDs exactly)")
     assigned_user_id: str = Field(
-        description="The ID of the user assigned to this ticket"
+        description="The ID of the user assigned to this ticket (must match one of the provided user IDs exactly)"
     )
     due_date: str = Field(description="Due date in format YYYY-MM-DD")
 
@@ -92,6 +94,10 @@ def generate_monthly_tickets(db: Session, house_id: str) -> Dict[str, Any]:
     chores = db.query(Chore).filter(Chore.house_id == house_id).all()
     if not chores:
         return {"status": "error", "message": "No chores found for this house"}
+
+    # Build lookup sets for fast validation of LLM output
+    valid_chore_ids = {str(c.id) for c in chores}
+    valid_user_ids  = {str(u.id) for u in users}
 
     # 4. Build user list string
     user_list_parts = []
@@ -151,46 +157,50 @@ def generate_monthly_tickets(db: Session, house_id: str) -> Dict[str, Any]:
 
     try:
         # 10. Generate content with structured output
+        # NOTE: thinking_config is NOT supported on gemini-2.5-flash for JSON output mode
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-2.0-flash",
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=MonthlyTicketsResponse.model_json_schema(),
-                thinking_config=types.ThinkingConfig(
-                    include_thoughts=True,
-                ),
             ),
         )
 
         # 11. Parse and validate the response
         generated_data = MonthlyTicketsResponse.model_validate_json(response.text)
-        print(f"generated_data: {generated_data}")
+        print(f"[generate_monthly_tickets] AI returned {len(generated_data.tickets)} assignments")
 
         # 12. Create tickets in the database
         created_tickets = []
+        skipped = 0
         for ticket_assignment in generated_data.tickets:
-            # Parse the due date
-            due_date = datetime.strptime(ticket_assignment.due_date, "%Y-%m-%d").date()
+            chore_id = str(ticket_assignment.chore_id)
+            user_id  = str(ticket_assignment.assigned_user_id)
 
-            # Verify chore and user exist
-            chore = (
-                db.query(Chore).filter(Chore.id == ticket_assignment.chore_id).first()
-            )
-            user = (
-                db.query(User)
-                .filter(User.id == ticket_assignment.assigned_user_id)
-                .first()
-            )
+            # Strictly validate the IDs returned by the LLM — hallucinated IDs must be rejected
+            if chore_id not in valid_chore_ids:
+                print(f"[generate_monthly_tickets] Skipping unknown chore_id: {chore_id}")
+                skipped += 1
+                continue
+            if user_id not in valid_user_ids:
+                print(f"[generate_monthly_tickets] Skipping unknown user_id: {user_id}")
+                skipped += 1
+                continue
 
-            if not chore or not user:
-                continue  # Skip invalid assignments
+            # Parse due_date — convert date → datetime for PostgreSQL DateTime column
+            try:
+                due_date = datetime.strptime(ticket_assignment.due_date, "%Y-%m-%d")
+            except ValueError:
+                print(f"[generate_monthly_tickets] Bad date format: {ticket_assignment.due_date}")
+                skipped += 1
+                continue
 
             new_ticket = Ticket(
-                chore_id=ticket_assignment.chore_id,
-                assigned_user_id=ticket_assignment.assigned_user_id,
+                chore_id=chore_id,
+                assigned_user_id=user_id,
                 status="Pending",
-                due_date=due_date,
+                due_date=due_date,  # datetime, not date — matches Column(DateTime)
             )
             db.add(new_ticket)
             created_tickets.append(new_ticket)
@@ -202,13 +212,18 @@ def generate_monthly_tickets(db: Session, house_id: str) -> Dict[str, Any]:
         for ticket in created_tickets:
             db.refresh(ticket)
 
+        print(f"[generate_monthly_tickets] Created {len(created_tickets)}, skipped {skipped}")
+
         return {
             "status": "success",
             "tickets_created": len(created_tickets),
-            "ticket_ids": [ticket.id for ticket in created_tickets],
+            "tickets_skipped": skipped,
+            "ticket_ids": [str(ticket.id) for ticket in created_tickets],
         }
 
     except ValidationError as e:
         return {"status": "error", "message": f"Failed to parse AI response: {str(e)}"}
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return {"status": "error", "message": f"Failed to generate tickets: {str(e)}"}

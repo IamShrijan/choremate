@@ -1,0 +1,32 @@
+# Copy this file to terraform.tfvars and fill in your values.
+# NEVER commit terraform.tfvars to git — add it to .gitignore.
+
+aws_region  = "us-east-1"
+app_name    = "choremate"
+environment = "prod"
+
+# ─── LabRole ──────────────────────────────────────────────────────────────────
+# Find this in your AWS Academy console → IAM → Roles → LabRole → ARN
+lab_role_arn = "arn:aws:iam::REPLACE_WITH_ACCOUNT_ID:role/LabRole"
+
+# ─── Secrets ─────────────────────────────────────────────────────────────────
+# Set real values below (or override with TF_VAR_gemini_api_key env var)
+gemini_api_key = "REPLACE_ME"
+secret_key     = "REPLACE_ME_WITH_RANDOM_STRING"
+
+# ─── RDS ──────────────────────────────────────────────────────────────────────
+# rds_instance_class = "db.t3.micro"   # free-tier eligible
+# rds_db_name        = "choremate"
+# rds_username       = "chorematadmin"
+rds_password = "REPLACE_ME_STRONG_PASSWORD_16_CHARS_MIN"
+
+# ─── ECS sizing (optional overrides) ─────────────────────────────────────────
+# frontend_cpu               = 256
+# frontend_memory            = 512
+# backend_api_cpu            = 512
+# backend_api_memory         = 1024
+# backend_worker_cpu         = 512
+# backend_worker_memory      = 1024
+# frontend_desired_count     = 2
+# backend_api_desired_count  = 2
+# backend_worker_desired_count = 2

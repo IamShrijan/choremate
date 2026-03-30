@@ -849,7 +849,7 @@ def approve_action(
                     title="Chore Reassigned to You",
                     message=f"{current_user.name} has reassigned '{plan['chore_name']}' to you (due {plan['due_date_display']}).",
                     related_id=ticket.id,
-                    is_read=0,
+                    is_read=False,
                 )
                 db.add(notification)
 

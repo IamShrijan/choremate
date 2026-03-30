@@ -51,6 +51,8 @@ For each chore, determine:
    - Respect time_availability when possible
    - Consider special_requirements (e.g., avoid physically demanding tasks for those with limitations)
 
+IMPORTANT: You MUST use the exact chore IDs and user IDs provided above. Do not invent or modify any IDs.
+
 Generate the weekly ticket assignments now.
 """
 
@@ -92,6 +94,10 @@ def generate_weekly_tickets(db: Session, house_id: str) -> Dict[str, Any]:
     chores = db.query(Chore).filter(Chore.house_id == house_id).all()
     if not chores:
         return {"status": "error", "message": "No chores found for this house"}
+
+    # Build lookup sets for fast validation of LLM output
+    valid_chore_ids = {str(c.id) for c in chores}
+    valid_user_ids  = {str(u.id) for u in users}
 
     # 4. Build user list string
     user_list_parts = []
@@ -153,15 +159,13 @@ def generate_weekly_tickets(db: Session, house_id: str) -> Dict[str, Any]:
 
     try:
         # 10. Generate content with structured output
+        # NOTE: thinking_config is NOT supported with response_mime_type=application/json
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-2.0-flash",
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=MonthlyTicketsResponse.model_json_schema(),
-                thinking_config=types.ThinkingConfig(
-                    include_thoughts=True,
-                ),
             ),
         )
 
@@ -171,43 +175,44 @@ def generate_weekly_tickets(db: Session, house_id: str) -> Dict[str, Any]:
 
         # 12. Create tickets in the database
         created_tickets = []
+        skipped = 0
         for ticket_assignment in generated_data.tickets:
-            # Parse the due date
-            due_date = datetime.strptime(ticket_assignment.due_date, "%Y-%m-%d").date()
+            chore_id = str(ticket_assignment.chore_id)
+            user_id  = str(ticket_assignment.assigned_user_id)
 
-            # Verify chore and user exist
-            chore = (
-                db.query(Chore).filter(Chore.id == ticket_assignment.chore_id).first()
-            )
-            user = (
-                db.query(User)
-                .filter(User.id == ticket_assignment.assigned_user_id)
-                .first()
-            )
+            if chore_id not in valid_chore_ids:
+                print(f"[generate_weekly_tickets] Skipping unknown chore_id: {chore_id}")
+                skipped += 1
+                continue
+            if user_id not in valid_user_ids:
+                print(f"[generate_weekly_tickets] Skipping unknown user_id: {user_id}")
+                skipped += 1
+                continue
 
-            if not chore or not user:
-                continue  # Skip invalid assignments
+            try:
+                due_date = datetime.strptime(ticket_assignment.due_date, "%Y-%m-%d")
+            except ValueError:
+                skipped += 1
+                continue
 
             new_ticket = Ticket(
-                chore_id=ticket_assignment.chore_id,
-                assigned_user_id=ticket_assignment.assigned_user_id,
+                chore_id=chore_id,
+                assigned_user_id=user_id,
                 status="Pending",
                 due_date=due_date,
             )
             db.add(new_ticket)
             created_tickets.append(new_ticket)
 
-        # 13. Commit all tickets at once
         db.commit()
-
-        # 14. Refresh all tickets to get their IDs
         for ticket in created_tickets:
             db.refresh(ticket)
 
         return {
             "status": "success",
             "tickets_created": len(created_tickets),
-            "ticket_ids": [ticket.id for ticket in created_tickets],
+            "tickets_skipped": skipped,
+            "ticket_ids": [str(ticket.id) for ticket in created_tickets],
         }
 
     except ValidationError as e:

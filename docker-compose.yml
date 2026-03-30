@@ -1,0 +1,88 @@
+version: "3.9"
+
+services:
+  # ─── Backend API ────────────────────────────────────────────────────────────
+  backend-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file: ./backend/.env
+    environment:
+      - WORKER_MODE=false
+      - CELERY_BROKER_URL=sqs://
+      - SQS_QUEUE_URL=http://localstack:4566/000000000000/choremate-tasks
+      - SQS_QUEUE_NAME=choremate-tasks
+      - CELERY_RESULT_BACKEND=db+sqlite:////app/choremate_celery.db
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_ENDPOINT_URL=http://localstack:4566
+    ports:
+      - "8000:8000"
+    volumes:
+      - backend-data:/app/data
+    depends_on:
+      localstack:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─── Celery Worker ──────────────────────────────────────────────────────────
+  backend-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file: ./backend/.env
+    environment:
+      - WORKER_MODE=true
+      - CELERY_BROKER_URL=sqs://
+      - SQS_QUEUE_URL=http://localstack:4566/000000000000/choremate-tasks
+      - SQS_QUEUE_NAME=choremate-tasks
+      - CELERY_RESULT_BACKEND=db+sqlite:////app/choremate_celery.db
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_ENDPOINT_URL=http://localstack:4566
+    volumes:
+      - backend-data:/app/data
+    depends_on:
+      localstack:
+        condition: service_healthy
+
+  # ─── Frontend ───────────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./choremate-app
+      dockerfile: Dockerfile
+    environment:
+      - BACKEND_URL=http://backend-api:8000
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend-api
+
+  # ─── LocalStack (SQS emulation) ─────────────────────────────────────────────
+  localstack:
+    image: localstack/localstack:3.4
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=sqs
+      - DEFAULT_REGION=us-east-1
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - localstack-data:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./scripts/init-localstack.sh:/etc/localstack/init/ready.d/init-localstack.sh
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  backend-data:
+  localstack-data:

@@ -268,15 +268,13 @@ def generate_house_chores(db: Session, house_id: str) -> Dict[str, Any]:
 
     try:
         # 7. Generate content with structured output
+        # NOTE: thinking_config is NOT supported with response_mime_type=application/json
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-2.0-flash",
             contents=prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=GeneratedChoresResponse.model_json_schema(),
-                thinking_config=types.ThinkingConfig(
-                    include_thoughts=True,
-                ),
             ),
         )
 

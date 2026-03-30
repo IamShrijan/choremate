@@ -42,10 +42,6 @@ def get_notifications(
         .all()
     )
 
-    # Convert SQLite integer boolean to Python boolean for response
-    for note in notifications:
-        note.is_read = bool(note.is_read)
-
     return notifications
 
 
@@ -67,7 +63,7 @@ def mark_notification_read(
     if not notification:
         raise HTTPException(status_code=404, detail="Notification not found")
 
-    notification.is_read = 1
+    notification.is_read = True
     db.commit()
 
     return {"status": "success", "message": "Notification marked as read"}
@@ -115,7 +111,7 @@ def send_appreciation(
         notification_type="appreciation",
         title="New Appreciation! 🌟",
         message=f"{current_user.name} sent you an appreciation: {request.message}",
-        is_read=0,
+        is_read=False,
         related_id=current_user.id,  # Link to sender
     )
 

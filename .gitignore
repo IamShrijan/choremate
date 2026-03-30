@@ -57,4 +57,18 @@ yarn-error.log*
 # Database
 db.sqlite3
 *.db
+# Terraform
+terraform/terraform.tfvars
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+*.tfplan
 
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Docker local volumes
+choremate_celery.db

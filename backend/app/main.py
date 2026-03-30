@@ -1,3 +1,4 @@
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -17,13 +18,20 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Roommate Chore Platform")
 
-from fastapi.middleware.cors import CORSMiddleware
+# ALLOWED_ORIGINS env var: comma-separated list of allowed origins.
+# In production, injected via SSM → ECS task environment.
+# e.g. "http://my-alb-123.us-east-1.elb.amazonaws.com,https://choremate.example.com"
+_extra_origins = [
+    o.strip()
+    for o in os.getenv("ALLOWED_ORIGINS", "").split(",")
+    if o.strip()
+]
 
 origins = [
     "http://localhost:5173",
     "http://localhost:5174",
     "http://localhost:3000",
-]
+] + _extra_origins
 
 app.add_middleware(
     CORSMiddleware,

@@ -151,16 +151,23 @@ def generate_monthly_tickets_for_house(
 
 @router.patch("/ticket/{ticket_id}")
 def update_ticket_status(
-    ticket_id: int, update: TicketUpdate, db: Session = Depends(get_db)
+    ticket_id: str,  # UUID string, not int
+    update: TicketUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
 ):
     ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket not found")
 
+    # Verify the ticket belongs to the current user's house
+    chore = db.query(Chore).filter(Chore.id == ticket.chore_id).first()
+    if chore and chore.house_id != current_user.house_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
     ticket.status = update.status
     if update.status == "Completed":
         from datetime import datetime
-
         ticket.completed_at = datetime.now()
 
     db.commit()
