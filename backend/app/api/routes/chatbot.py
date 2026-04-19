@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional, Literal
@@ -20,6 +20,8 @@ from ...models.model import (
 from ...db.database import get_db
 from ..dependencies import get_current_user
 from ...core.generate_house_chores import get_gemini_client
+from ...core.notifications_bus import publish_notification_sync
+
 
 router = APIRouter(prefix="/ai-chatbot", tags=["AI Chatbot"])
 
@@ -31,6 +33,7 @@ router = APIRouter(prefix="/ai-chatbot", tags=["AI Chatbot"])
 
 class ChatMessage(BaseModel):
     message: str = Field(..., description="User's message to the AI chatbot")
+    use_mock: bool = Field(False, description="Force the mock LLM to be used for this request")
 
 
 class ProposedAction(BaseModel):
@@ -54,7 +57,7 @@ class ActionApproval(BaseModel):
 
 class ConversationMessage(BaseModel):
     id: str
-    created_by: Literal["user", "system"]
+    created_by: Literal["user", "system", "ai"]
     content: str
     created_at: datetime
 
@@ -521,6 +524,21 @@ def tool_find_best_assignees(
     return reassignment_plan
 
 
+class IntentAnalysisResponse(BaseModel):
+    selected_tool: Literal[
+        "general_chat",
+        "get_my_chores",
+        "check_fairness",
+        "reassign_chores_for_period",
+    ]
+    confidence: float
+    reasoning: str
+    period_type: str
+    start_date: str
+    end_date: str
+    reason: str
+
+
 def parse_date_period(
     period_type: str, start_date: str = None, end_date: str = None
 ) -> tuple:
@@ -567,12 +585,71 @@ def parse_date_period(
 # ============================================================================
 
 
-@router.post("/chat", response_model=ChatResponse)
+@router.post("/chat", response_model=dict)
 def chat_with_ai(
     message: ChatMessage,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """
+    Asynchronous chatbot endpoint.
+    Dispatches to Celery worker via SQS. Worker handles USE_MOCK_LLM.
+    """
+    import traceback
+    save_message(db, current_user.id, "user", message.message)
+
+    if not current_user.house_id:
+        resp = "You need to join a household first to use the AI assistant!"
+        save_message(db, current_user.id, "system", resp)
+        from ...core.notifications_bus import publish_notification_sync
+        publish_notification_sync(current_user.id)
+        return {"status": "error", "message": resp}
+
+    try:
+        from ...tasks import process_chat_message_task
+        task = process_chat_message_task.delay(
+            current_user.id,
+            message.message,
+            None,  # conversation_id
+            message.use_mock
+        )
+        return {"status": "processing", "task_id": task.id}
+    except Exception as e:
+        import traceback
+        return {
+            "status": "error",
+            "error": str(e),
+            "type": type(e).__name__,
+            "trace": traceback.format_exc()
+        }
+
+
+@router.get("/task/{task_id}")
+def get_task_status(task_id: str):
+    """
+    Poll Celery result backend (Redis) for LLM task completion.
+    Used by locust Experiment 3 as a reliable alternative to SSE.
+
+    Returns:
+      {"ready": false, "status": "PENDING"}   — task still queued/running
+      {"ready": true,  "status": "SUCCESS"}   — task completed
+      {"ready": true,  "status": "FAILURE"}   — task failed
+    """
+    from ...worker import celery_app
+    result = celery_app.AsyncResult(task_id)
+    return {
+        "ready": result.ready(),
+        "status": result.status,   # PENDING / STARTED / SUCCESS / FAILURE / RETRY
+    }
+
+
+def _process_chat_sync(db: Session, current_user: User, message_text: str, conversation_id: str = None) -> ChatResponse:
+    """
+    Original synchronous chatbot logic extracted for Celery to call.
+    """
+    # The user message was already saved by the route.
+    message = ChatMessage(message=message_text, conversation_id=conversation_id)
+
     """
     Main chatbot endpoint with tool-based workflow:
 
@@ -582,12 +659,9 @@ def chat_with_ai(
     4. If action needed: Create proposal for user approval
     """
 
-    # Save user message
-    save_message(db, current_user.id, "user", message.message)
-
     if not current_user.house_id:
         resp = "You need to join a household first to use the AI assistant!"
-        save_message(db, current_user.id, "system", resp)
+        # Message save handled in parent
         return ChatResponse(response=resp)
 
     try:
@@ -624,7 +698,7 @@ def chat_with_ai(
             contents=intent_prompt,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
-                response_schema=IntentAnalysisResponse.model_json_schema(),
+                response_schema=IntentAnalysisResponse,
             ),
         )
 
@@ -790,8 +864,8 @@ def chat_with_ai(
         print(f"Error in chatbot: {str(e)}")
         import traceback
 
-        traceback.print_exc()
-        error_resp = "I'm sorry, I encountered an error. Please try again."
+        trace_info = traceback.format_exc()
+        error_resp = f"I'm sorry, I encountered an error: {str(e)}\n\nTraceback: {trace_info}"
         save_message(db, current_user.id, "system", error_resp)
         return ChatResponse(response=error_resp)
 
@@ -824,9 +898,10 @@ def approve_action(
         save_message(db, current_user.id, "system", resp)
         return ChatResponse(response=resp)
 
-    # Execute the bulk reassignment
+        # Execute the bulk reassignment
     if action_data["type"] == "bulk_reassign":
         reassigned = []
+        assignee_ids_to_notify: set[str] = set()
 
         for plan in action_data["reassignments"]:
             ticket = db.query(Ticket).filter(Ticket.id == plan["ticket_id"]).first()
@@ -853,12 +928,19 @@ def approve_action(
                 )
                 db.add(notification)
 
+                # Queue SSE signal for the new assignee (sent after commit below)
+                assignee_ids_to_notify.add(new_assignee_id)
+
                 reassigned.append(
                     {"chore": plan["chore_name"], "to": new_assignee_name}
                 )
 
         db.commit()
         del pending_actions[approval.action_id]
+
+        # Push SSE signals to all newly-assigned users (fire-and-forget)
+        for uid in assignee_ids_to_notify:
+            publish_notification_sync(uid)
 
         # Build response
         if reassigned:

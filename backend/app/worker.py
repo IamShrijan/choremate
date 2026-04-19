@@ -14,13 +14,22 @@ load_dotenv()
 # ---------------------------------------------------------------------------
 # Broker configuration
 # In AWS: broker_url = "sqs://" — uses boto3 credentials (via LabRole)
-# Locally: set CELERY_BROKER_URL=sqla+sqlite:///celery.db or redis://...
+# Locally: set CELERY_BROKER_URL=redis://localhost:6379/0
 # ---------------------------------------------------------------------------
 BROKER_URL = os.getenv("CELERY_BROKER_URL", "sqs://")
 SQS_QUEUE_NAME = os.getenv("SQS_QUEUE_NAME", "choremate-tasks")
 
 # AWS region for SQS (only needed when broker is SQS)
 AWS_REGION = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
+
+# ---------------------------------------------------------------------------
+# Result backend — use Redis (already deployed for SSE pub/sub).
+# We don't poll task results anywhere (notifications come via SSE instead),
+# but Celery requires a result backend to start. Redis is the simplest option
+# and avoids the db+postgresql:// driver complexity entirely.
+# ---------------------------------------------------------------------------
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND", REDIS_URL)
 
 celery_app = Celery(
     "choremate",
@@ -40,14 +49,9 @@ celery_app.conf.update(
     },
     # Task routing — all tasks go to the choremate-tasks queue
     task_default_queue=SQS_QUEUE_NAME,
-    # Result backend: store results in the same DB as the app.
-    # In production: postgresql://... (from SSM DATABASE_URL env var)
-    # In local dev: falls back to SQLite (same as the app)
-    result_backend=os.getenv(
-        "CELERY_RESULT_BACKEND",
-        os.getenv("DATABASE_URL", "db+sqlite:///./choremate_celery.db"),
-    ),
-    result_expires=3600,  # Results expire after 1 hour
+    # Result backend — Redis, same instance used for SSE pub/sub
+    result_backend=RESULT_BACKEND,
+    result_expires=3600,
     task_serializer="json",
     result_serializer="json",
     accept_content=["json"],

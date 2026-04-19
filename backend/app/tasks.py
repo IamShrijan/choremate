@@ -119,3 +119,70 @@ def generate_weekly_tickets_task(self, house_id: str) -> dict:
     except Exception as exc:
         logger.error(f"[Task] generate_weekly_tickets failed: {exc}")
         raise self.retry(exc=exc)
+
+
+# ---------------------------------------------------------------------------
+# Task: Process Chatbot Message (Async, Mockable)
+# ---------------------------------------------------------------------------
+@celery_app.task(
+    bind=True,
+    base=DatabaseTask,
+    name="choremate.process_chat_message",
+    max_retries=1,
+)
+def process_chat_message_task(self, user_id: str, message_text: str, conversation_id: str = None, force_mock: bool = False) -> dict:
+    """
+    Worker task for processing the AI Chatbot message.
+    Supports a mock mode (USE_MOCK_LLM) to bypass the actual Gemini call and save money/time.
+    """
+    import os
+    import time
+    from .models.model import User
+    from .api.routes.chatbot import _process_chat_sync, save_message
+    from .core.notifications_bus import publish_notification_from_worker
+
+    logger.info(f"[Task] Processing chat message for user_id={user_id}")
+
+    user = self.db.query(User).filter(User.id == user_id).first()
+    if not user:
+        return {"status": "error", "message": "User not found"}
+
+    use_mock = force_mock or os.getenv("USE_MOCK_LLM", "false").lower() == "true"
+
+    try:
+        if use_mock:
+            # 1. Simulate 3-second LLM delay
+            time.sleep(3)
+
+            # 2. Hardcode a dummy response
+            mock_resp_text = f"Beep boop! This is a mock simulated response to: '{message_text}'. The LLM API is successfully bypassed."
+
+            # 3. Save to database directly
+            save_message(self.db, user_id, "ai", mock_resp_text)
+
+            # 4. We skip returning actual proposals in mock mode to keep it simple,
+            # or could return a dummy ChatResponse structure.
+            result = {"status": "success", "response": mock_resp_text, "action_required": False}
+        else:
+            # Execute the real generation logic
+            chat_response = _process_chat_sync(self.db, user, message_text, conversation_id)
+
+            # Extract primitive types for celery Return
+            result = {
+                "status": "success",
+                "response": chat_response.response,
+                "proposed_action": chat_response.proposed_action.model_dump() if chat_response.proposed_action else None
+            }
+
+        # Push SSE notification via synchronous Redis publish
+        # (publish_notification_sync requires FastAPI's event loop — unavailable in Celery)
+        publish_notification_from_worker(user_id)
+
+        return result
+
+    except Exception as exc:
+        logger.error(f"[Task] process_chat_message failed: {exc}")
+        # Save error message so the user isn't stuck waiting forever
+        save_message(self.db, user_id, "ai", "Sorry, an internal error occurred while processing your message.")
+        publish_notification_from_worker(user_id)
+        raise self.retry(exc=exc)

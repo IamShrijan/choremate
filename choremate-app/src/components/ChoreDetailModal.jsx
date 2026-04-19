@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { choresAPI } from '../utils/api';
 import {
     X,
     Calendar,
@@ -90,8 +91,6 @@ export default function ChoreDetailModal({ chore, onClose, onComplete, onRefresh
 
     const handleReschedule = async () => {
         try {
-            // Import the API
-            const { choresAPI } = await import('../utils/api');
 
             // Combine date and time into ISO format
             const newDueDateISO = `${newDueDate}T${newDueTime}:00`;

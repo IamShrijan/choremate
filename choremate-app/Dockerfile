@@ -10,7 +10,8 @@ COPY . .
 
 # VITE_API_BASE_URL is injected at build time OR at runtime via window._env_
 # We use runtime injection so one image works in all environments.
-RUN npm run build
+ARG BUILD_CMD="npm run build"
+RUN ${BUILD_CMD}
 
 # ---- Stage 2: Serve with Nginx ----
 FROM nginx:1.27-alpine

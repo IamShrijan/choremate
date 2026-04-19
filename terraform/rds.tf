@@ -30,8 +30,9 @@ resource "aws_db_instance" "postgres" {
   # Free-tier eligible: single-AZ, no multi-AZ (set to true for production HA)
   multi_az = false
 
-  # Backups — keep 7 days for easy recovery
-  backup_retention_period = 7
+  # Backups
+  # Note: Set to 0 to bypass Free Tier backup limitations. Set to 7 in production.
+  backup_retention_period = 0
   backup_window           = "03:00-04:00"
   maintenance_window      = "sun:05:00-sun:06:00"
 

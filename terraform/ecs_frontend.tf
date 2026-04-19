@@ -64,9 +64,14 @@ resource "aws_ecs_task_definition" "frontend" {
   cpu                      = var.frontend_cpu
   memory                   = var.frontend_memory
 
+  runtime_platform {
+    operating_system_family = "LINUX"
+    cpu_architecture        = "ARM64"
+  }
+
   # Use LabRole — student accounts cannot create IAM roles.
-  execution_role_arn = var.lab_role_arn
-  task_role_arn      = var.lab_role_arn
+  execution_role_arn = aws_iam_role.ecs_execution_role.arn
+  task_role_arn      = aws_iam_role.ecs_task_role.arn
 
   container_definitions = jsonencode([
     {

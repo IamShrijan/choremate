@@ -90,11 +90,26 @@ export default function Dashboard() {
     };
 
     useEffect(() => {
+        // Initial load
         fetchNotificationsAndStats();
-        // Poll every minute
-        const interval = setInterval(fetchNotificationsAndStats, 60000);
-        return () => clearInterval(interval);
+
+        // Open SSE stream — backend pushes a signal whenever a new notification
+        // is created (appreciation, chore reassignment, etc.). On signal, we
+        // fetch fresh data. EventSource auto-reconnects on network drops.
+        const es = notificationsAPI.openStream();
+
+        es.addEventListener('new_notification', () => {
+            fetchNotificationsAndStats();
+        });
+
+        es.onerror = (err) => {
+            // EventSource will automatically try to reconnect — no action needed.
+            console.warn('[SSE] notifications stream error, will reconnect:', err);
+        };
+
+        return () => es.close();
     }, []);
+
 
     // Fetch chores from API on component mount
     useEffect(() => {

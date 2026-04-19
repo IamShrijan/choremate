@@ -43,6 +43,16 @@ output "rds_db_name" {
   value       = aws_db_instance.postgres.db_name
 }
 
+output "redis_endpoint" {
+  description = "ElastiCache Redis endpoint for the SSE notification bus"
+  value       = aws_elasticache_cluster.redis.cache_nodes[0].address
+}
+
+output "redis_url" {
+  description = "Full Redis URL injected into ECS tasks via SSM"
+  value       = "redis://${aws_elasticache_cluster.redis.cache_nodes[0].address}:6379/0"
+}
+
 output "vpc_id" {
   description = "VPC ID"
   value       = aws_vpc.main.id

@@ -43,3 +43,22 @@ resource "aws_ssm_parameter" "allowed_origins" {
 
   tags = { Name = "${var.app_name}-allowed-origins" }
 }
+
+# ─── Redis URL (SSE notification bus) ─────────────────────────────────────────
+# Built from the ElastiCache cluster endpoint after apply.
+# Stored as SecureString so it is not visible in ECS task definition plaintext.
+resource "aws_ssm_parameter" "redis_url" {
+  name        = "/${var.app_name}/REDIS_URL"
+  description = "Redis URL for the SSE notification pub/sub bus"
+  type        = "SecureString"
+  value       = "redis://${aws_elasticache_cluster.redis.cache_nodes[0].address}:6379/0"
+
+  tags = { Name = "${var.app_name}-redis-url" }
+
+  lifecycle {
+    # If the cluster endpoint changes (e.g. after cluster replacement),
+    # re-apply will update this automatically unless ignored.
+    ignore_changes = []
+  }
+}
+

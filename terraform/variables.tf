@@ -145,3 +145,18 @@ variable "rds_password" {
   sensitive   = true
   default     = "REPLACE_ME_STRONG_PASSWORD"
 }
+
+# ─── ElastiCache (Redis) ──────────────────────────────────────────────────────
+variable "elasticache_node_type" {
+  description = "ElastiCache node type for the Redis SSE notification bus"
+  type        = string
+  # cache.t3.micro ≈ $13/month — sufficient for pub/sub signal-only workload.
+  # Upgrade to cache.t3.small if you add caching or session storage later.
+  default     = "cache.t3.micro"
+}
+
+variable "use_mock_llm" {
+  description = "Set to true to bypass Gemini and use a mocked LLM sleep in the Celery worker"
+  type        = string
+  default     = "false"
+}

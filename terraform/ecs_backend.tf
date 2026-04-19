@@ -8,6 +8,10 @@ resource "aws_lb" "backend" {
 
   enable_deletion_protection = false
 
+  # SSE connections are long-lived HTTP streams. The default ALB idle timeout
+  # (60 s) would drop them. 3600 s matches a typical 1-hour JWT lifespan.
+  idle_timeout = 3600
+
   tags = { Name = "${var.app_name}-backend-alb" }
 }
 
@@ -61,9 +65,14 @@ resource "aws_ecs_task_definition" "backend_api" {
   cpu                      = var.backend_api_cpu
   memory                   = var.backend_api_memory
 
+  runtime_platform {
+    operating_system_family = "LINUX"
+    cpu_architecture        = "ARM64"
+  }
+
   # LabRole — no IAM role creation needed in student account
-  execution_role_arn = var.lab_role_arn
-  task_role_arn      = var.lab_role_arn
+  execution_role_arn = aws_iam_role.ecs_execution_role.arn
+  task_role_arn      = aws_iam_role.ecs_task_role.arn
 
   container_definitions = jsonencode([
     {
@@ -74,10 +83,14 @@ resource "aws_ecs_task_definition" "backend_api" {
       portMappings = [{ containerPort = 8000, protocol = "tcp" }]
 
       environment = [
-        { name = "WORKER_MODE",        value = "false" },
-        { name = "AWS_DEFAULT_REGION", value = var.aws_region },
-        { name = "SQS_QUEUE_NAME",     value = aws_sqs_queue.tasks.name },
-        { name = "SQS_QUEUE_URL",      value = aws_sqs_queue.tasks.url },
+        { name = "WORKER_MODE",            value = "false" },
+        { name = "AWS_DEFAULT_REGION",     value = var.aws_region },
+        { name = "SQS_QUEUE_NAME",         value = aws_sqs_queue.tasks.name },
+        { name = "SQS_QUEUE_URL",          value = aws_sqs_queue.tasks.url },
+        # SSE notification bus: use Redis so all API task replicas share the same
+        # pub/sub channel. Change to "memory" for single-task deployments.
+        { name = "NOTIFICATION_BACKEND",   value = "redis" },
+        { name = "USE_MOCK_LLM",           value = var.use_mock_llm },
       ]
 
       secrets = [
@@ -85,6 +98,8 @@ resource "aws_ecs_task_definition" "backend_api" {
         { name = "SECRET_KEY",      valueFrom = aws_ssm_parameter.secret_key.arn },
         { name = "ALLOWED_ORIGINS", valueFrom = aws_ssm_parameter.allowed_origins.arn },
         { name = "DATABASE_URL",    valueFrom = aws_ssm_parameter.rds_url.arn },
+        # Redis URL injected as a secret to keep the endpoint out of task def plaintext
+        { name = "REDIS_URL",       valueFrom = aws_ssm_parameter.redis_url.arn },
       ]
 
       logConfiguration = {
@@ -109,8 +124,13 @@ resource "aws_ecs_task_definition" "backend_worker" {
   cpu                      = var.backend_worker_cpu
   memory                   = var.backend_worker_memory
 
-  execution_role_arn = var.lab_role_arn
-  task_role_arn      = var.lab_role_arn
+  runtime_platform {
+    operating_system_family = "LINUX"
+    cpu_architecture        = "ARM64"
+  }
+
+  execution_role_arn = aws_iam_role.ecs_execution_role.arn
+  task_role_arn      = aws_iam_role.ecs_task_role.arn
 
   container_definitions = jsonencode([
     {
@@ -119,16 +139,21 @@ resource "aws_ecs_task_definition" "backend_worker" {
       essential = true
 
       environment = [
-        { name = "WORKER_MODE",        value = "true" },
-        { name = "AWS_DEFAULT_REGION", value = var.aws_region },
-        { name = "SQS_QUEUE_NAME",     value = aws_sqs_queue.tasks.name },
-        { name = "SQS_QUEUE_URL",      value = aws_sqs_queue.tasks.url },
+        { name = "WORKER_MODE",          value = "true" },
+        { name = "AWS_DEFAULT_REGION",   value = var.aws_region },
+        { name = "SQS_QUEUE_NAME",       value = aws_sqs_queue.tasks.name },
+        { name = "SQS_QUEUE_URL",        value = aws_sqs_queue.tasks.url },
+        # Worker also needs the notification bus so it can publish signals
+        # after completing async LLM tasks (future use).
+        { name = "NOTIFICATION_BACKEND", value = "redis" },
+        { name = "USE_MOCK_LLM",           value = var.use_mock_llm },
       ]
 
       secrets = [
         { name = "GEMINI_API_KEY", valueFrom = aws_ssm_parameter.gemini_api_key.arn },
         { name = "SECRET_KEY",     valueFrom = aws_ssm_parameter.secret_key.arn },
         { name = "DATABASE_URL",   valueFrom = aws_ssm_parameter.rds_url.arn },
+        { name = "REDIS_URL",      valueFrom = aws_ssm_parameter.redis_url.arn },
       ]
 
       logConfiguration = {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Send, Bot, User as UserIcon, Check, X } from "lucide-react";
-import { chatbotAPI } from "../utils/api";
+import { chatbotAPI, notificationsAPI } from "../utils/api";
 
 export default function AIChatbotPage({ onBack }) {
     const [messages, setMessages] = useState([]);
@@ -8,6 +8,7 @@ export default function AIChatbotPage({ onBack }) {
     const [loading, setLoading] = useState(false);
     const [conversationId, setConversationId] = useState(null);
     const [pendingAction, setPendingAction] = useState(null);
+    const [isMockMode, setIsMockMode] = useState(true);
     const messagesEndRef = useRef(null);
     const inputRef = useRef(null);
 
@@ -26,16 +27,48 @@ export default function AIChatbotPage({ onBack }) {
         scrollToBottom();
     }, [messages]);
 
+    const fetchHistory = async () => {
+        try {
+            const history = await chatbotAPI.getConversations();
+            
+            // Map the DB schema to our UI schema
+            const mappedMessages = history.map((msg) => ({
+                id: msg.id,
+                type: msg.created_by === "system" ? "ai" : msg.created_by,
+                text: msg.content,
+                timestamp: new Date(msg.created_at.endsWith("Z") ? msg.created_at : msg.created_at + "Z"),
+            }));
+
+            // Prepend a welcome message if the history is empty
+            if (mappedMessages.length === 0) {
+                mappedMessages.push({
+                    id: 'welcome',
+                    type: "ai",
+                    text: "Hello! I'm your ChoreMate AI assistant. I can help you reassign chores to your roommates based on their availability and workload. How can I assist you today?",
+                    timestamp: new Date(),
+                });
+            }
+            
+            setMessages(mappedMessages);
+        } catch (error) {
+            console.error("Failed to load conversation history:", error);
+        }
+    };
+
     useEffect(() => {
-        const welcomeMessage = {
-            id: Date.now(),
-            type: "ai",
-            text: "Hello! I'm your ChoreMate AI assistant. I can help you reassign chores to your roommates based on their availability and workload. How can I assist you today?",
-            timestamp: new Date(),
-        };
-        setMessages([welcomeMessage]);
-        setConversationId(null);
-        setPendingAction(null);
+        fetchHistory();
+
+        // Listen for SSE notification push (which now includes async chat responses)
+        const es = notificationsAPI.openStream();
+        es.addEventListener('new_notification', () => {
+            // Re-fetch conversation history to see the new AI response
+            fetchHistory();
+            // Remove the hardcoded loading state if we had one
+            setMessages(prev => prev.filter(m => m.id !== 'loading...'));
+            setLoading(false);
+        });
+
+        return () => es.close();
     }, []);
 
     const handleSendMessage = async () => {
@@ -57,25 +90,27 @@ export default function AIChatbotPage({ onBack }) {
             const response = await chatbotAPI.chat({
                 message: inputMessage,
                 conversation_id: conversationId,
+                use_mock: isMockMode,
             });
 
-            const aiMessage = {
-                id: Date.now() + 1,
-                type: "ai",
-                text: response.response || "I'm sorry, I couldn't process that request.",
-                timestamp: new Date(),
-                proposedAction: response.proposed_action || null,
-            };
-
-            if (response.conversation_id) {
-                setConversationId(response.conversation_id);
+            // SQS Async mode: response is just {status: "processing", task_id: ...}
+            if (response.status === "processing") {
+                // Show a loading indicator message temporarily
+                const loadingMessage = {
+                    id: 'loading...',
+                    type: "ai",
+                    text: "Thinking... (Simulated LLM delay)",
+                    timestamp: new Date(),
+                    proposedAction: null,
+                };
+                setMessages((prev) => [...prev, loadingMessage]);
+                // We leave setLoading(true) until the SSE push arrives
+                return;
             }
 
-            if (response.proposed_action) {
-                setPendingAction(response.proposed_action);
-            }
-
-            setMessages((prev) => [...prev, aiMessage]);
+            // Fallback for real time mode or approveAction
+            fetchHistory();
+            
         } catch (error) {
             console.error("Failed to send message:", error);
             const errorMessage = {
@@ -85,9 +120,9 @@ export default function AIChatbotPage({ onBack }) {
                 timestamp: new Date(),
             };
             setMessages((prev) => [...prev, errorMessage]);
-        } finally {
             setLoading(false);
         }
+
     };
 
     const handleApproveAction = async (approved) => {
@@ -155,48 +190,71 @@ export default function AIChatbotPage({ onBack }) {
                     backgroundColor: "white",
                     display: "flex",
                     alignItems: "center",
-                    gap: "16px",
+                    justifyContent: "space-between",
                     flexShrink: 0,
                 }}
             >
-                <button
-                    onClick={onBack}
-                    style={{
-                        padding: "8px",
-                        backgroundColor: "transparent",
-                        border: "none",
-                        borderRadius: "6px",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                    }}
-                >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M19 12H5M12 19l-7-7 7-7" />
-                    </svg>
-                </button>
-                <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                    <div
+                <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+                    <button
+                        onClick={onBack}
                         style={{
-                            width: "40px",
-                            height: "40px",
-                            borderRadius: "50%",
-                            backgroundColor: "#7c3aed",
+                            padding: "8px",
+                            backgroundColor: "transparent",
+                            border: "none",
+                            borderRadius: "6px",
+                            cursor: "pointer",
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
                         }}
                     >
-                        <Bot style={{ width: "24px", height: "24px", color: "white" }} />
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M19 12H5M12 19l-7-7 7-7" />
+                        </svg>
+                    </button>
+                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                        <div
+                            style={{
+                                width: "40px",
+                                height: "40px",
+                                borderRadius: "50%",
+                                backgroundColor: "#7c3aed",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                            }}
+                        >
+                            <Bot style={{ width: "24px", height: "24px", color: "white" }} />
+                        </div>
+                        <div>
+                            <h2 style={{ fontSize: "18px", fontWeight: "600", color: "#111827", margin: 0 }}>
+                                AI Chatbot
+                            </h2>
+                            <p style={{ fontSize: "12px", color: "#6b7280", margin: 0 }}>
+                                Always here to help
+                            </p>
+                        </div>
                     </div>
-                    <div>
-                        <h2 style={{ fontSize: "18px", fontWeight: "600", color: "#111827", margin: 0 }}>
-                            AI Chatbot
-                        </h2>
-                        <p style={{ fontSize: "12px", color: "#6b7280", margin: 0 }}>
-                            Always here to help
-                        </p>
+                </div>
+
+                {/* Mock Mode Toggle */}
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <label style={{ fontSize: "12px", color: "#6b7280", fontWeight: "500", cursor: "pointer" }} onClick={() => setIsMockMode(!isMockMode)}>
+                        Mock Mode
+                    </label>
+                    <div 
+                        onClick={() => setIsMockMode(!isMockMode)}
+                        style={{
+                            width: "36px", height: "20px", borderRadius: "10px", 
+                            backgroundColor: isMockMode ? "#7c3aed" : "#d1d5db",
+                            position: "relative", cursor: "pointer", transition: "background-color 0.2s"
+                        }}
+                    >
+                        <div style={{
+                            width: "16px", height: "16px", borderRadius: "50%", backgroundColor: "white",
+                            position: "absolute", top: "2px", left: isMockMode ? "18px" : "2px",
+                            transition: "left 0.2s", boxShadow: "0 1px 2px rgba(0,0,0,0.1)"
+                        }}/>
                     </div>
                 </div>
             </div>

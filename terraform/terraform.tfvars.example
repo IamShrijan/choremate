@@ -20,6 +20,11 @@ secret_key     = "REPLACE_ME_WITH_RANDOM_STRING"
 # rds_username       = "chorematadmin"
 rds_password = "REPLACE_ME_STRONG_PASSWORD_16_CHARS_MIN"
 
+# ─── ElastiCache (Redis) ──────────────────────────────────────────────────────
+# SSE notification pub/sub bus — only tiny "ping" signals are published.
+# cache.t3.micro is sufficient for this workload (~$13/month).
+# elasticache_node_type = "cache.t3.micro"
+
 # ─── ECS sizing (optional overrides) ─────────────────────────────────────────
 # frontend_cpu               = 256
 # frontend_memory            = 512
@@ -30,3 +35,4 @@ rds_password = "REPLACE_ME_STRONG_PASSWORD_16_CHARS_MIN"
 # frontend_desired_count     = 2
 # backend_api_desired_count  = 2
 # backend_worker_desired_count = 2
+

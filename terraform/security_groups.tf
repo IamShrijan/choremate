@@ -147,3 +147,30 @@ resource "aws_security_group" "rds" {
 
   tags = { Name = "${var.app_name}-rds-sg" }
 }
+
+# ─── Redis (ElastiCache) Security Group ────────────────────────────────────────
+# Port 6379 only reachable from backend ECS tasks (API + worker).
+# The SSE pub/sub bus only needs internal VPC access — never internet-facing.
+resource "aws_security_group" "redis" {
+  name        = "${var.app_name}-redis-sg"
+  description = "Allow Redis (6379) from backend ECS tasks only"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description     = "Redis from backend ECS API and worker tasks"
+    from_port       = 6379
+    to_port         = 6379
+    protocol        = "tcp"
+    security_groups = [aws_security_group.backend_ecs.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = { Name = "${var.app_name}-redis-sg" }
+}
+

@@ -1,4 +1,6 @@
 import os
+import asyncio
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -10,13 +12,24 @@ from .api.routes.user_preferences import router as user_preferences_router
 from .api.routes.user import router as user_router
 from .api.routes.chatbot import router as chatbot_router
 from .api.routes.notifications import router as notifications_router
+from .api.routes.admin import router as admin_router
 
 from .db.database import engine, Base
+from .core.notifications_bus import set_main_loop
 
 # Create tables if they don't exist
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Roommate Chore Platform")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Store the running asyncio event loop so sync handlers can schedule SSE publishes."""
+    set_main_loop(asyncio.get_event_loop())
+    yield
+
+
+app = FastAPI(title="Roommate Chore Platform", lifespan=lifespan)
+
 
 # ALLOWED_ORIGINS env var: comma-separated list of allowed origins.
 # In production, injected via SSM → ECS task environment.
@@ -52,6 +65,7 @@ app.include_router(chatbot_router)
 app.include_router(
     notifications_router, prefix="/notifications", tags=["notifications"]
 )
+app.include_router(admin_router)
 
 
 @app.get("/")
